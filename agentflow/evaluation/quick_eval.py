@@ -4,7 +4,7 @@ Reduces evaluation setup from ~50 lines to ~5 lines with presets and builders.
 """
 
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from agentflow.evaluation.builder import EvalSetBuilder
 from agentflow.evaluation.eval_config import EvalConfig

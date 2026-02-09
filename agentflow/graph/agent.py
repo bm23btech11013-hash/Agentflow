@@ -331,9 +331,9 @@ class Agent(BaseAgent):
         """
         if provider == "openai":
             try:
-                import os  # noqa: PLC0415
+                import os
 
-                from openai import AsyncOpenAI  # noqa: PLC0415
+                from openai import AsyncOpenAI
 
                 # Get API key from environment
                 api_key = os.getenv("OPENAI_API_KEY")
@@ -363,9 +363,9 @@ class Agent(BaseAgent):
 
         elif provider == "google":
             try:
-                import os  # noqa: PLC0415
+                import os
 
-                from google import genai  # noqa: PLC0415
+                from google import genai
 
                 # Get API key from environment
                 api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
@@ -470,7 +470,7 @@ class Agent(BaseAgent):
         Returns:
             List of Google FunctionDeclaration objects
         """
-        from google.genai import types  # noqa: PLC0415
+        from google.genai import types
 
         google_tools = []
         for tool in tools:
@@ -506,7 +506,7 @@ class Agent(BaseAgent):
         Returns:
             GenerateContentConfig instance or None
         """
-        from google.genai import types  # noqa: PLC0415
+        from google.genai import types
 
         config_kwargs = {}
 

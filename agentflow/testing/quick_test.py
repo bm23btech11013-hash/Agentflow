@@ -130,7 +130,7 @@ class QuickTest:
 
         # Run each turn
         messages = []
-        for user_msg, expected_response in conversation:
+        for user_msg, _ in conversation:
             messages.append(Message.text_message(user_msg, role="user"))
 
             result = await compiled.ainvoke(

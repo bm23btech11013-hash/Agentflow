@@ -1,233 +1,223 @@
-"""Agent Registry for managing active agents in the system."""
+# """Agent Registry for managing active agents in the system."""
 
-import asyncio
-from datetime import datetime, timezone
-from typing import Any
+# import asyncio
+# from datetime import UTC, datetime
+# from typing import Any
 
-from pydantic import BaseModel, Field
-
-
-class AgentRegistryEntry(BaseModel):
-    """Entry for an agent in the registry."""
-
-    agent_id: str = Field(..., description="Unique agent identifier")
-    agent_name: str = Field(..., description="Human-readable agent name")
-    agent_type: str = Field(default="agent", description="Type of agent")
-    status: str = Field(default="active", description="Agent status")
-    capabilities: list[str] = Field(
-        default_factory=list, description="List of agent capabilities"
-    )
-    metadata: dict[str, Any] = Field(
-        default_factory=dict, description="Additional metadata"
-    )
-    registered_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc),
-        description="Registration timestamp",
-    )
-    last_heartbeat: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc),
-        description="Last heartbeat timestamp",
-    )
+# from pydantic import BaseModel, Field
 
 
-class AgentRegistry:
-    """
-    Registry for managing active agents.
+# class AgentRegistryEntry(BaseModel):
+#     """Entry for an agent in the registry."""
 
-    Provides agent discovery, registration, and lifecycle management.
-    """
+#     agent_id: str = Field(..., description="Unique agent identifier")
+#     agent_name: str = Field(..., description="Human-readable agent name")
+#     agent_type: str = Field(default="agent", description="Type of agent")
+#     status: str = Field(default="active", description="Agent status")
+#     capabilities: list[str] = Field(default_factory=list,
+#       description="List of agent capabilities")
+#     metadata: dict[str, Any] = Field(default_factory=dict, description="Additional metadata")
+#     registered_at: datetime = Field(
+#         default_factory=lambda: datetime.now(UTC),
+#         description="Registration timestamp",
+#     )
+#     last_heartbeat: datetime = Field(
+#         default_factory=lambda: datetime.now(UTC),
+#         description="Last heartbeat timestamp",
+#     )
 
-    def __init__(self, heartbeat_timeout: int = 60):
-        """
-        Initialize the agent registry.
 
-        Args:
-            heartbeat_timeout: Seconds before considering an agent inactive
-        """
-        self._agents: dict[str, AgentRegistryEntry] = {}
-        self._lock = asyncio.Lock()
-        self._heartbeat_timeout = heartbeat_timeout
-        self._cleanup_task: asyncio.Task | None = None
+# class AgentRegistry:
+#     """
+#     Registry for managing active agents.
 
-    async def register(self, entry: AgentRegistryEntry) -> bool:
-        """
-        Register an agent.
+#     Provides agent discovery, registration, and lifecycle management.
+#     """
 
-        Args:
-            entry: Agent registry entry
+#     def __init__(self, heartbeat_timeout: int = 60):
+#         """
+#         Initialize the agent registry.
 
-        Returns:
-            True if registered successfully
-        """
-        async with self._lock:
-            if entry.agent_id in self._agents:
-                # Update existing entry
-                self._agents[entry.agent_id] = entry
-                return False  # Was already registered
-            else:
-                self._agents[entry.agent_id] = entry
-                return True  # Newly registered
+#         Args:
+#             heartbeat_timeout: Seconds before considering an agent inactive
+#         """
+#         self._agents: dict[str, AgentRegistryEntry] = {}
+#         self._lock = asyncio.Lock()
+#         self._heartbeat_timeout = heartbeat_timeout
+#         self._cleanup_task: asyncio.Task | None = None
 
-    async def unregister(self, agent_id: str) -> bool:
-        """
-        Unregister an agent.
+#     async def register(self, entry: AgentRegistryEntry) -> bool:
+#         """
+#         Register an agent.
 
-        Args:
-            agent_id: ID of agent to unregister
+#         Args:
+#             entry: Agent registry entry
 
-        Returns:
-            True if agent was unregistered
-        """
-        async with self._lock:
-            if agent_id in self._agents:
-                del self._agents[agent_id]
-                return True
-            return False
+#         Returns:
+#             True if registered successfully
+#         """
+#         async with self._lock:
+#             if entry.agent_id in self._agents:
+#                 # Update existing entry
+#                 self._agents[entry.agent_id] = entry
+#                 return False  # Was already registered
+#             else:
+#                 self._agents[entry.agent_id] = entry
+#                 return True  # Newly registered
 
-    async def get(self, agent_id: str) -> AgentRegistryEntry | None:
-        """
-        Get an agent entry by ID.
+#     async def unregister(self, agent_id: str) -> bool:
+#         """
+#         Unregister an agent.
 
-        Args:
-            agent_id: Agent ID
+#         Args:
+#             agent_id: ID of agent to unregister
 
-        Returns:
-            Agent entry or None if not found
-        """
-        async with self._lock:
-            return self._agents.get(agent_id)
+#         Returns:
+#             True if agent was unregistered
+#         """
+#         async with self._lock:
+#             if agent_id in self._agents:
+#                 del self._agents[agent_id]
+#                 return True
+#             return False
 
-    async def list_agents(
-        self,
-        agent_type: str | None = None,
-        status: str | None = None,
-    ) -> list[AgentRegistryEntry]:
-        """
-        List all registered agents with optional filters.
+#     async def get(self, agent_id: str) -> AgentRegistryEntry | None:
+#         """
+#         Get an agent entry by ID.
 
-        Args:
-            agent_type: Filter by agent type
-            status: Filter by status
+#         Args:
+#             agent_id: Agent ID
 
-        Returns:
-            List of agent entries
-        """
-        async with self._lock:
-            agents = list(self._agents.values())
+#         Returns:
+#             Agent entry or None if not found
+#         """
+#         async with self._lock:
+#             return self._agents.get(agent_id)
 
-            if agent_type:
-                agents = [a for a in agents if a.agent_type == agent_type]
+#     async def list_agents(
+#         self,
+#         agent_type: str | None = None,
+#         status: str | None = None,
+#     ) -> list[AgentRegistryEntry]:
+#         """
+#         List all registered agents with optional filters.
 
-            if status:
-                agents = [a for a in agents if a.status == status]
+#         Args:
+#             agent_type: Filter by agent type
+#             status: Filter by status
 
-            return agents
+#         Returns:
+#             List of agent entries
+#         """
+#         async with self._lock:
+#             agents = list(self._agents.values())
 
-    async def update_heartbeat(self, agent_id: str) -> bool:
-        """
-        Update agent heartbeat timestamp.
+#             if agent_type:
+#                 agents = [a for a in agents if a.agent_type == agent_type]
 
-        Args:
-            agent_id: Agent ID
+#             if status:
+#                 agents = [a for a in agents if a.status == status]
 
-        Returns:
-            True if updated successfully
-        """
-        async with self._lock:
-            if agent_id in self._agents:
-                self._agents[agent_id].last_heartbeat = datetime.now(timezone.utc)
-                return True
-            return False
+#             return agents
 
-    async def update_status(self, agent_id: str, status: str) -> bool:
-        """
-        Update agent status.
+#     async def update_heartbeat(self, agent_id: str) -> bool:
+#         """
+#         Update agent heartbeat timestamp.
 
-        Args:
-            agent_id: Agent ID
-            status: New status
+#         Args:
+#             agent_id: Agent ID
 
-        Returns:
-            True if updated successfully
-        """
-        async with self._lock:
-            if agent_id in self._agents:
-                self._agents[agent_id].status = status
-                return True
-            return False
+#         Returns:
+#             True if updated successfully
+#         """
+#         async with self._lock:
+#             if agent_id in self._agents:
+#                 self._agents[agent_id].last_heartbeat = datetime.now(UTC)
+#                 return True
+#             return False
 
-    async def find_by_capability(self, capability: str) -> list[AgentRegistryEntry]:
-        """
-        Find agents with a specific capability.
+#     async def update_status(self, agent_id: str, status: str) -> bool:
+#         """
+#         Update agent status.
 
-        Args:
-            capability: Capability to search for
+#         Args:
+#             agent_id: Agent ID
+#             status: New status
 
-        Returns:
-            List of agents with the capability
-        """
-        async with self._lock:
-            return [
-                agent
-                for agent in self._agents.values()
-                if capability in agent.capabilities
-            ]
+#         Returns:
+#             True if updated successfully
+#         """
+#         async with self._lock:
+#             if agent_id in self._agents:
+#                 self._agents[agent_id].status = status
+#                 return True
+#             return False
 
-    async def get_agent_count(self) -> int:
-        """Get total number of registered agents."""
-        async with self._lock:
-            return len(self._agents)
+#     async def find_by_capability(self, capability: str) -> list[AgentRegistryEntry]:
+#         """
+#         Find agents with a specific capability.
 
-    async def cleanup_inactive_agents(self) -> int:
-        """
-        Remove agents that haven't sent heartbeat within timeout.
+#         Args:
+#             capability: Capability to search for
 
-        Returns:
-            Number of agents removed
-        """
-        now = datetime.now(timezone.utc)
-        removed_count = 0
+#         Returns:
+#             List of agents with the capability
+#         """
+#         async with self._lock:
+#             return [agent for agent in self._agents.values() if capability in agent.capabilities]
 
-        async with self._lock:
-            inactive_ids = [
-                agent_id
-                for agent_id, agent in self._agents.items()
-                if (now - agent.last_heartbeat).total_seconds() > self._heartbeat_timeout
-            ]
+#     async def get_agent_count(self) -> int:
+#         """Get total number of registered agents."""
+#         async with self._lock:
+#             return len(self._agents)
 
-            for agent_id in inactive_ids:
-                del self._agents[agent_id]
-                removed_count += 1
+#     async def cleanup_inactive_agents(self) -> int:
+#         """
+#         Remove agents that haven't sent heartbeat within timeout.
 
-        return removed_count
+#         Returns:
+#             Number of agents removed
+#         """
+#         now = datetime.now(UTC)
+#         removed_count = 0
 
-    def start_cleanup_task(self, interval: int = 30):
-        """
-        Start background task to cleanup inactive agents.
+#         async with self._lock:
+#             inactive_ids = [
+#                 agent_id
+#                 for agent_id, agent in self._agents.items()
+#                 if (now - agent.last_heartbeat).total_seconds() > self._heartbeat_timeout
+#             ]
 
-        Args:
-            interval: Cleanup interval in seconds
-        """
-        if self._cleanup_task is None or self._cleanup_task.done():
-            self._cleanup_task = asyncio.create_task(
-                self._cleanup_loop(interval)
-            )
+#             for agent_id in inactive_ids:
+#                 del self._agents[agent_id]
+#                 removed_count += 1
 
-    async def _cleanup_loop(self, interval: int):
-        """Background cleanup loop."""
-        while True:
-            await asyncio.sleep(interval)
-            removed = await self.cleanup_inactive_agents()
-            if removed > 0:
-                print(f"Cleaned up {removed} inactive agents")
+#         return removed_count
 
-    def stop_cleanup_task(self):
-        """Stop the cleanup background task."""
-        if self._cleanup_task and not self._cleanup_task.done():
-            self._cleanup_task.cancel()
+#     def start_cleanup_task(self, interval: int = 30):
+#         """
+#         Start background task to cleanup inactive agents.
 
-    async def clear(self):
-        """Clear all registered agents."""
-        async with self._lock:
-            self._agents.clear()
+#         Args:
+#             interval: Cleanup interval in seconds
+#         """
+#         if self._cleanup_task is None or self._cleanup_task.done():
+#             self._cleanup_task = asyncio.create_task(self._cleanup_loop(interval))
 
+#     async def _cleanup_loop(self, interval: int):
+#         """Background cleanup loop."""
+#         while True:
+#             await asyncio.sleep(interval)
+#             removed = await self.cleanup_inactive_agents()
+#             if removed > 0:
+#                 print(f"Cleaned up {removed} inactive agents")
+
+#     def stop_cleanup_task(self):
+#         """Stop the cleanup background task."""
+#         if self._cleanup_task and not self._cleanup_task.done():
+#             self._cleanup_task.cancel()
+
+#     async def clear(self):
+#         """Clear all registered agents."""
+#         async with self._lock:
+#             self._agents.clear()
