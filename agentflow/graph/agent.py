@@ -375,13 +375,9 @@ class Agent(BaseAgent):
                         "GEMINI_API_KEY or GOOGLE_API_KEY environment variable must be set "
                         "for Google provider"
                     )
-
                 # Use Client (has both sync and async methods via .aio)
                 logger.info("Creating Google GenAI Client with async support")
-                return genai.Client(
-                    api_key=api_key,
-                    **self.llm_kwargs,
-                )
+                return genai.Client(api_key=api_key)
             except ImportError:
                 raise ImportError(
                     "google-genai SDK is required for Google provider. "
