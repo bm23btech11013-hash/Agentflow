@@ -19,12 +19,13 @@ class TestConverterType:
         assert ConverterType.ANTHROPIC.value == "anthropic"
         assert ConverterType.GOOGLE.value == "google"
         assert ConverterType.CUSTOM.value == "custom"
+        assert ConverterType.OPENAI_RESPONSES.value == "openai_responses"
 
     def test_converter_type_enum_membership(self):
         """Test enum membership and comparison."""
         assert ConverterType.OPENAI in ConverterType
         assert ConverterType.LITELLM != ConverterType.OPENAI
-        assert len(list(ConverterType)) == 5
+        assert len(list(ConverterType)) == 6
 
 
 class TestBaseConverter:

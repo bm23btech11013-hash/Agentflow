@@ -30,6 +30,30 @@ logger = logging.getLogger("agentflow.agent")
 # Constants
 CONTENT_PREVIEW_LENGTH = 200
 
+# Keys safe to pass to the AsyncOpenAI() constructor (everything else goes
+# only to API calls like chat.completions.create / responses.create).
+_CLIENT_CONSTRUCTOR_KWARGS = frozenset(
+    {
+        "organization",
+        "project",
+        "timeout",
+        "max_retries",
+        "default_headers",
+        "default_query",
+        "http_client",
+    }
+)
+
+# Keys that must NEVER be forwarded to API calls like
+# chat.completions.create() / responses.create().
+# Superset of _CLIENT_CONSTRUCTOR_KWARGS plus extra init-only params.
+_CALL_EXCLUDED_KWARGS = _CLIENT_CONSTRUCTOR_KWARGS | frozenset(
+    {
+        "api_key",
+        "base_url",
+    }
+)
+
 
 class Agent(BaseAgent):
     """A smart node function wrapper for LLM interactions.
@@ -91,6 +115,8 @@ class Agent(BaseAgent):
         base_url: str | None = None,  # For OpenAI-compatible APIs (ollama, vllm, etc.)
         trim_context: bool = False,
         tools_tags: set[str] | None = None,
+        api_style: str = "chat",
+        reasoning_config: dict[str, Any] | None = None,
         **kwargs,
     ):
         """Initialize an Agent node.
@@ -114,6 +140,19 @@ class Agent(BaseAgent):
                 (ollama, vllm, openrouter, deepseek, etc.).
             trim_context: Whether to trim context using context manager.
             tools_tags: Optional tags to filter tools.
+            api_style: API style for OpenAI provider. "chat" uses Chat Completions
+                (``client.chat.completions.create``), "responses" uses the Responses
+                API (``client.responses.create``). Default: "chat".
+            reasoning_config: Configuration for reasoning models. For Responses API,
+                passed as ``reasoning=`` parameter. For Chat Completions,
+                ``effort`` is passed as ``reasoning_effort=`` parameter.
+                Supported keys:
+                - ``effort``: "low", "medium", or "high" — controls reasoning depth.
+                - ``summary``: "auto", "concise", or "detailed" — enables reasoning
+                  summaries. Works on gpt-5 series (gpt-5, gpt-5-mini, gpt-5-nano)
+                  without restrictions. **o-series models (o4-mini, o3, etc.) require
+                  OpenAI organization verification** for summaries.
+                Example: ``{"effort": "medium", "summary": "auto"}``.
             **llm_kwargs: Additional provider-specific parameters
                 (temperature, max_tokens, top_p, or model args, organization_id, project_id).
 
@@ -173,7 +212,7 @@ class Agent(BaseAgent):
         super().__init__(model=model, system_prompt=system_prompt or [], tools=tools, **kwargs)
 
         # check user sending model and provider as prefix, if provider is not explicitly provided
-        if "/" in model:
+        if "/" in model and provider is None:
             provider, model = model.split("/", 1)
             self.model = model
 
@@ -203,6 +242,12 @@ class Agent(BaseAgent):
 
         # Internal setup
         self._tool_node = self._setup_tools()
+
+        # API style & reasoning configuration
+        if api_style not in ("chat", "responses"):
+            raise ValueError(f"Invalid api_style '{api_style}'. Supported: 'chat', 'responses'")
+        self.api_style = api_style
+        self.reasoning_config = reasoning_config
 
         logger.info(
             f"Agent initialized: model={model}, provider={self.provider}, "
@@ -336,8 +381,8 @@ class Agent(BaseAgent):
 
                 from openai import AsyncOpenAI
 
-                # Get API key from environment
-                api_key = os.getenv("OPENAI_API_KEY")
+                # Get API key from kwargs or environment
+                api_key = self.llm_kwargs.get("api_key") or os.getenv("OPENAI_API_KEY")
                 if not api_key:
                     logger.warning(
                         "OPENAI_API_KEY environment variable not set. "
@@ -346,15 +391,21 @@ class Agent(BaseAgent):
 
                 if base_url:
                     logger.info(f"Using custom base_url for OpenAI client: {base_url}")
+                    client_kwargs = {
+                        k: v for k, v in self.llm_kwargs.items() if k in _CLIENT_CONSTRUCTOR_KWARGS
+                    }
                     return AsyncOpenAI(
                         api_key=api_key,
                         base_url=base_url,
-                        **self.llm_kwargs,
+                        **client_kwargs,
                     )
 
+                client_kwargs = {
+                    k: v for k, v in self.llm_kwargs.items() if k in _CLIENT_CONSTRUCTOR_KWARGS
+                }
                 return AsyncOpenAI(
                     api_key=api_key,
-                    **self.llm_kwargs,
+                    **client_kwargs,
                 )
             except ImportError:
                 raise ImportError(
@@ -551,7 +602,9 @@ class Agent(BaseAgent):
         Returns:
             OpenAI response object
         """
-        call_kwargs = {**self.llm_kwargs, **kwargs}
+        call_kwargs = {
+            k: v for k, v in {**self.llm_kwargs, **kwargs}.items() if k not in _CALL_EXCLUDED_KWARGS
+        }
 
         if self.output_type == "text":
             # Standard chat completions (default)
@@ -587,6 +640,110 @@ class Agent(BaseAgent):
             )
 
         raise ValueError(f"Unsupported output_type '{self.output_type}' for OpenAI provider")
+
+    async def _call_openai_responses(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list | None = None,
+        stream: bool = False,
+        **kwargs: Any,
+    ) -> Any:
+        """Call OpenAI Responses API (``client.responses.create``).
+
+        Converts Chat-Completions-formatted messages/tools into the format
+        expected by the Responses API before making the call.
+
+        Args:
+            messages: List of message dicts (Chat Completions format from ``convert_messages``)
+            tools: Optional list of tool specs in OpenAI Chat Completions format
+            stream: Whether to stream the response
+            **kwargs: Additional call parameters
+
+        Returns:
+            OpenAI Response object (or stream iterator)
+        """
+        call_kwargs: dict[str, Any] = {
+            k: v for k, v in {**self.llm_kwargs, **kwargs}.items() if k not in _CALL_EXCLUDED_KWARGS
+        }
+
+        # --- separate system messages into `instructions` ------------------
+        instructions_parts: list[str] = []
+        input_items: list[dict[str, Any]] = []
+
+        for msg in messages:
+            role = msg.get("role", "")
+            if role == "system":
+                instructions_parts.append(str(msg.get("content", "")))
+            elif role == "tool":
+                # Convert tool result messages to Responses API format
+                input_items.append(
+                    {
+                        "type": "function_call_output",
+                        "call_id": msg.get("tool_call_id", ""),
+                        "output": str(msg.get("content", "")),
+                    }
+                )
+            elif role == "assistant" and msg.get("tool_calls"):
+                # Assistant messages with tool_calls need to include function_call items
+                # First add the text part if any
+                text_content = msg.get("content", "")
+                if text_content:
+                    input_items.append({"role": "assistant", "content": text_content})
+                # Add each tool call as a function_call input item
+                for tc in msg["tool_calls"]:
+                    func = tc.get("function", {})
+                    input_items.append(
+                        {
+                            "type": "function_call",
+                            "name": func.get("name", ""),
+                            "arguments": func.get("arguments", "{}"),
+                            "call_id": tc.get("id", ""),
+                        }
+                    )
+            else:
+                input_items.append({"role": role, "content": msg.get("content", "")})
+
+        instructions = "\n".join(instructions_parts) if instructions_parts else None
+
+        # --- convert tools to Responses API flat format --------------------
+        responses_tools: list[dict[str, Any]] | None = None
+        if tools:
+            responses_tools = []
+            for tool in tools:
+                if isinstance(tool, dict) and "function" in tool:
+                    func = tool["function"]
+                    t: dict[str, Any] = {
+                        "type": "function",
+                        "name": func.get("name", ""),
+                        "description": func.get("description", ""),
+                    }
+                    if "parameters" in func:
+                        t["parameters"] = func["parameters"]
+                    if "strict" in func:
+                        t["strict"] = func["strict"]
+                    responses_tools.append(t)
+                else:
+                    # Pass through if already in correct format
+                    responses_tools.append(tool)
+
+        # --- build call kwargs ---------------------------------------------
+        if instructions:
+            call_kwargs["instructions"] = instructions
+        if responses_tools:
+            call_kwargs["tools"] = responses_tools
+        if self.reasoning_config:
+            call_kwargs["reasoning"] = self.reasoning_config
+
+        # Remove keys not applicable to Responses API
+        call_kwargs.pop("reasoning_effort", None)
+
+        logger.debug(f"Calling OpenAI responses.create with model={self.model}")
+        return await self.client.responses.create(
+            model=self.model,
+            input=input_items,
+            stream=stream,
+            **call_kwargs,
+        )
 
     async def _call_google(
         self,
@@ -696,6 +853,41 @@ class Agent(BaseAgent):
         )
 
         if self.provider == "openai":
+            if self.api_style == "responses":
+                # When base_url is set (custom endpoint), fall back to
+                # chat.completions.create() if the Responses API is not
+                # supported by the server.
+                if self.base_url:
+                    try:
+                        result = await self._call_openai_responses(
+                            messages, tools, stream, **kwargs
+                        )
+                        self._effective_api_style = "responses"
+                        return result
+                    except Exception as exc:
+                        logger.warning(
+                            "Responses API not supported at %s (%s). "
+                            "Falling back to chat.completions.create().",
+                            self.base_url,
+                            exc,
+                        )
+                        self._effective_api_style = "chat"
+                        # Forward reasoning_effort if applicable
+                        if self.reasoning_config and self.reasoning_config.get("effort"):
+                            kwargs.setdefault("reasoning_effort", self.reasoning_config["effort"])
+                        return await self._call_openai(messages, tools, stream, **kwargs)
+                else:
+                    self._effective_api_style = "responses"
+                    return await self._call_openai_responses(messages, tools, stream, **kwargs)
+            # Chat Completions path — forward reasoning_effort if configured
+            self._effective_api_style = "chat"
+            if self.reasoning_config and self.reasoning_config.get("effort"):
+                kwargs.setdefault("reasoning_effort", self.reasoning_config["effort"])
+            # OpenRouter-style endpoints accept `reasoning` dict in extra_body
+            if self.base_url and self.reasoning_config:
+                existing_extra = kwargs.get("extra_body", {})
+                existing_extra["reasoning"] = self.reasoning_config
+                kwargs["extra_body"] = existing_extra
             return await self._call_openai(messages, tools, stream, **kwargs)
         if self.provider == "google":
             return await self._call_google(messages, tools, stream, **kwargs)
@@ -767,7 +959,12 @@ class Agent(BaseAgent):
             )
 
         # Use provider-specific converter
+        converter_key = self.provider
+        effective = getattr(self, "_effective_api_style", self.api_style)
+        if self.provider == "openai" and effective == "responses":
+            converter_key = "openai_responses"
+
         return ModelResponseConverter(
             response,
-            converter=self.provider,
+            converter=converter_key,
         )

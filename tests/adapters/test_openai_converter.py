@@ -29,10 +29,25 @@ class MockModelResponse:
         
         # Mock usage
         usage_data = data.get("usage", {})
+
+        # Build nested detail objects when provided
+        completion_details_data = usage_data.get("completion_tokens_details", None)
+        prompt_details_data = usage_data.get("prompt_tokens_details", None)
+        completion_details = (
+            type("CompletionDetails", (), completion_details_data)
+            if isinstance(completion_details_data, dict) else completion_details_data
+        )
+        prompt_details = (
+            type("PromptDetails", (), prompt_details_data)
+            if isinstance(prompt_details_data, dict) else prompt_details_data
+        )
+
         self.usage = type('Usage', (), {
             'prompt_tokens': usage_data.get('prompt_tokens', 10),
             'completion_tokens': usage_data.get('completion_tokens', 20),
-            'total_tokens': usage_data.get('total_tokens', 30)
+            'total_tokens': usage_data.get('total_tokens', 30),
+            'completion_tokens_details': completion_details,
+            'prompt_tokens_details': prompt_details,
         })
         
         # Mock choices
@@ -266,3 +281,160 @@ class TestOpenAIConverter:
         assert message.metadata["provider"] == "openai"
         assert message.metadata["model"] == "gpt-4o-2024-05-13"
         assert message.metadata["finish_reason"] == "stop"
+
+
+# ---------------------------------------------------------------------------
+# Reasoning extraction (4-layer cascade in OpenAIConverter)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+class TestOpenAIReasoningExtraction:
+    """Test reasoning block extraction from ChatCompletion responses."""
+
+    @patch("agentflow.adapters.llm.openai_converter.HAS_OPENAI", True)
+    async def test_reasoning_content_field(self):
+        """reasoning_content field → ReasoningBlock."""
+        response = MockModelResponse({
+            "choices": [{
+                "message": {
+                    "content": "x³/3 + C",
+                    "reasoning_content": "Apply power rule: ∫x² dx = x³/3 + C",
+                },
+            }],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30},
+        })
+        converter = OpenAIConverter()
+        msg = await converter.convert_response(response)
+
+        text_blocks = [b for b in msg.content if isinstance(b, TextBlock)]
+        reasoning_blocks = [b for b in msg.content if isinstance(b, ReasoningBlock)]
+        assert len(text_blocks) == 1
+        assert len(reasoning_blocks) == 1
+        assert "power rule" in reasoning_blocks[0].summary
+        assert msg.reasoning != ""
+
+    @patch("agentflow.adapters.llm.openai_converter.HAS_OPENAI", True)
+    async def test_think_tag_extraction(self):
+        """<think> tags stripped from text, reasoning extracted."""
+        response = MockModelResponse({
+            "choices": [{
+                "message": {
+                    "content": "<think>Rayleigh scattering</think>The sky is blue.",
+                    "reasoning_content": None,
+                },
+            }],
+            "usage": {"prompt_tokens": 5, "completion_tokens": 10, "total_tokens": 15},
+        })
+        converter = OpenAIConverter()
+        msg = await converter.convert_response(response)
+
+        text_blocks = [b for b in msg.content if isinstance(b, TextBlock)]
+        reasoning_blocks = [b for b in msg.content if isinstance(b, ReasoningBlock)]
+        assert len(text_blocks) == 1
+        assert "<think>" not in text_blocks[0].text
+        assert len(reasoning_blocks) == 1
+        assert "Rayleigh" in reasoning_blocks[0].summary
+
+    @patch("agentflow.adapters.llm.openai_converter.HAS_OPENAI", True)
+    async def test_reasoning_content_takes_precedence(self):
+        """Field value wins over <think> tags when both present."""
+        response = MockModelResponse({
+            "choices": [{
+                "message": {
+                    "content": "<think>Tag reasoning</think>Answer.",
+                    "reasoning_content": "Field reasoning",
+                },
+            }],
+            "usage": {"prompt_tokens": 5, "completion_tokens": 5, "total_tokens": 10},
+        })
+        converter = OpenAIConverter()
+        msg = await converter.convert_response(response)
+
+        reasoning_blocks = [b for b in msg.content if isinstance(b, ReasoningBlock)]
+        assert len(reasoning_blocks) == 1
+        assert reasoning_blocks[0].summary == "Field reasoning"
+
+    @patch("agentflow.adapters.llm.openai_converter.HAS_OPENAI", True)
+    async def test_no_reasoning_no_block(self):
+        """Standard response produces zero ReasoningBlocks."""
+        response = MockModelResponse({
+            "choices": [{
+                "message": {
+                    "content": "Hello, world!",
+                    "reasoning_content": None,
+                },
+            }],
+            "usage": {"prompt_tokens": 5, "completion_tokens": 5, "total_tokens": 10},
+        })
+        converter = OpenAIConverter()
+        msg = await converter.convert_response(response)
+
+        assert not any(isinstance(b, ReasoningBlock) for b in msg.content)
+        assert msg.reasoning == ""
+
+
+# ---------------------------------------------------------------------------
+# Token usage details (reasoning tokens, cache tokens)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+class TestTokenUsageDetails:
+    """Test token usage extraction including reasoning and cache tokens."""
+
+    @patch("agentflow.adapters.llm.openai_converter.HAS_OPENAI", True)
+    async def test_reasoning_tokens_extracted(self):
+        """completion_tokens_details.reasoning_tokens mapped correctly."""
+        response = MockModelResponse({
+            "choices": [{"message": {"content": "Reasoned answer"}}],
+            "usage": {
+                "prompt_tokens": 25,
+                "completion_tokens": 60,
+                "total_tokens": 85,
+                "completion_tokens_details": {"reasoning_tokens": 35},
+            },
+        })
+        converter = OpenAIConverter()
+        msg = await converter.convert_response(response)
+
+        assert msg.usages.reasoning_tokens == 35
+        assert msg.usages.completion_tokens == 60
+
+    @patch("agentflow.adapters.llm.openai_converter.HAS_OPENAI", True)
+    async def test_cache_read_token_mapping(self):
+        """cached_tokens → cache_read_input_tokens (not cache_creation)."""
+        response = MockModelResponse({
+            "choices": [{"message": {"content": "Cached"}}],
+            "usage": {
+                "prompt_tokens": 50,
+                "completion_tokens": 20,
+                "total_tokens": 70,
+                "prompt_tokens_details": {"cached_tokens": 40},
+            },
+        })
+        converter = OpenAIConverter()
+        msg = await converter.convert_response(response)
+
+        assert msg.usages.cache_read_input_tokens == 40
+        assert msg.usages.cache_creation_input_tokens == 0
+
+    @patch("agentflow.adapters.llm.openai_converter.HAS_OPENAI", True)
+    async def test_no_token_details_defaults_to_zero(self):
+        """None details → reasoning_tokens == 0, cache_read == 0."""
+        response = MockModelResponse({
+            "choices": [{"message": {"content": "Test"}}],
+            "usage": {
+                "prompt_tokens": 10,
+                "completion_tokens": 5,
+                "total_tokens": 15,
+                "completion_tokens_details": None,
+                "prompt_tokens_details": None,
+            },
+        })
+        converter = OpenAIConverter()
+        msg = await converter.convert_response(response)
+
+        assert msg.usages.reasoning_tokens == 0
+        assert msg.usages.cache_read_input_tokens == 0
+        assert msg.usages.cache_creation_input_tokens == 0

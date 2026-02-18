@@ -132,6 +132,9 @@ max-complexity = 10
 "scripts/*.py" = ["E402", "S603", "T201", "S101", "INP001"]
 "*/__init__.py" = ["E402", "S603", "T201", "S101"]
 "*/migrations/*.py" = ["E402", "S603", "T201", "S101"]
+"agentflow/adapters/llm/openai_converter.py" = ["PLR0912"]
+"agentflow/adapters/llm/openai_responses_converter.py" = ["PLR0912", "PLR0915"]
+"agentflow/graph/agent.py" = ["PLR0912", "PLR0913"]
 
 [tool.ruff.lint.isort]
 lines-after-imports = 2

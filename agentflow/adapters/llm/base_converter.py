@@ -11,6 +11,7 @@ class ConverterType(str, Enum):
     """Enumeration of supported converter types for LLM responses."""
 
     OPENAI = "openai"
+    OPENAI_RESPONSES = "openai_responses"
     LITELLM = "litellm"
     ANTHROPIC = "anthropic"
     GOOGLE = "google"

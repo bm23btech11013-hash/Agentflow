@@ -14,7 +14,7 @@ import pytest
 
 from agentflow.graph import Agent, StateGraph, ToolNode
 from agentflow.state import AgentState, Message
-from agentflow.utils import END
+from agentflow.utils import END, ResponseGranularity
 
 
 # Skip all tests if GEMINI_API_KEY is not set
@@ -49,7 +49,7 @@ class TestAgentGoogleGemini:
     async def test_basic_agent_response(self):
         """Test basic Agent response without tools."""
         agent = Agent(
-            model="gemini/gemini-2.0-flash-exp",
+            model="google/gemini-2.5-flash-lite",
             system_prompt=[
                 {"role": "system", "content": "You are a helpful assistant. Be concise."}
             ],
@@ -62,12 +62,10 @@ class TestAgentGoogleGemini:
 
         compiled = graph.compile()
 
-        state = AgentState()
-        state.context = [
-            Message(message_id="1", role="user", content="Say 'Hello World' and nothing else.")
-        ]
-
-        result = await compiled.ainvoke({"state": state})
+        result = await compiled.ainvoke(
+            {"messages": [Message.text_message("Say 'Hello World' and nothing else.", role="user")]},
+            response_granularity=ResponseGranularity.FULL
+        )
         final_state = result["state"]
 
         # Verify we got a response
@@ -84,7 +82,7 @@ class TestAgentGoogleGemini:
         tool_node = ToolNode(tools)
 
         agent = Agent(
-            model="gemini/gemini-2.0-flash-exp",
+            model="google/gemini-2.5-flash-lite",
             system_prompt=[
                 {
                     "role": "system",
@@ -111,12 +109,10 @@ class TestAgentGoogleGemini:
 
         compiled = graph.compile()
 
-        state = AgentState()
-        state.context = [
-            Message(id="1", role="user", content="What's the weather in Tokyo?")
-        ]
-
-        result = await compiled.ainvoke({"state": state})
+        result = await compiled.ainvoke(
+            {"messages": [Message.text_message("What's the weather in Tokyo?", role="user")]},
+            response_granularity=ResponseGranularity.FULL
+        )
         final_state = result["state"]
 
         # Verify tool was called
@@ -137,7 +133,7 @@ class TestAgentGoogleGemini:
         tool_node = ToolNode(tools)
 
         agent = Agent(
-            model="gemini/gemini-2.0-flash-exp",
+            model="google/gemini-2.5-flash-lite",
             system_prompt=[
                 {
                     "role": "system",
@@ -164,12 +160,10 @@ class TestAgentGoogleGemini:
 
         compiled = graph.compile()
 
-        state = AgentState()
-        state.context = [
-            Message(id="1", role="user", content="Calculate 25 + 17")
-        ]
-
-        result = await compiled.ainvoke({"state": state})
+        result = await compiled.ainvoke(
+            {"messages": [Message.text_message("Calculate 25 + 17", role="user")]},
+            response_granularity=ResponseGranularity.FULL
+        )
         final_state = result["state"]
 
         # Verify tool was used
@@ -197,7 +191,7 @@ class TestAgentGoogleGemini:
     async def test_agent_streaming_mode(self):
         """Test Agent in streaming mode."""
         agent = Agent(
-            model="gemini/gemini-2.0-flash-exp",
+            model="google/gemini-2.5-flash-lite",
             system_prompt=[
                 {"role": "system", "content": "You are a helpful assistant. Be brief."}
             ],
@@ -210,13 +204,10 @@ class TestAgentGoogleGemini:
 
         compiled = graph.compile()
 
-        state = AgentState()
-        state.context = [
-            Message(id="1", role="user", content="Count from 1 to 3")
-        ]
-
         chunks = []
-        async for chunk in compiled.astream({"state": state}):
+        async for chunk in compiled.astream({"messages": [
+            Message.text_message("Count from 1 to 3", role="user")
+        ]}):
             chunks.append(chunk)
 
         # Verify we got streaming chunks
@@ -230,7 +221,7 @@ class TestAgentGoogleGemini:
         tool_node = ToolNode(tools)
 
         agent = Agent(
-            model="gemini/gemini-2.0-flash-exp",
+            model="google/gemini-2.5-flash-lite",
             system_prompt=[
                 {
                     "role": "system",
@@ -257,13 +248,10 @@ class TestAgentGoogleGemini:
 
         compiled = graph.compile()
 
-        state = AgentState()
-        state.context = [
-            Message(id="1", role="user", content="What's the weather in Paris?")
-        ]
-
         chunks = []
-        async for chunk in compiled.astream({"state": state}):
+        async for chunk in compiled.astream({"messages": [
+            Message.text_message("What's the weather in Paris?", role="user")
+        ]}):
             chunks.append(chunk)
 
         # Verify we got chunks
@@ -274,7 +262,7 @@ class TestAgentGoogleGemini:
     async def test_agent_state_persistence(self):
         """Test that Agent properly updates state."""
         agent = Agent(
-            model="gemini/gemini-2.0-flash-exp",
+            model="google/gemini-2.5-flash-lite",
             system_prompt=[
                 {"role": "system", "content": "You are a helpful assistant."}
             ],
@@ -288,34 +276,31 @@ class TestAgentGoogleGemini:
         compiled = graph.compile()
 
         # First message
-        state = AgentState()
-        state.context = [
-            Message(id="1", role="user", content="Remember: my name is Alice")
-        ]
-
-        result = await compiled.ainvoke({"state": state})
+        result = await compiled.ainvoke(
+            {"messages": [Message.text_message("Remember: my name is Alice", role="user")]},
+            response_granularity=ResponseGranularity.FULL
+        )
         state1 = result["state"]
 
         # Verify state was updated
         assert len(state1.context) >= 2  # Original + response
 
-        # Second message using previous state
-        state1.context.append(
-            Message(id="2", role="user", content="What's my name?")
+        # Second message - pass all messages from previous result
+        result = await compiled.ainvoke(
+            {"messages": state1.context + [Message.text_message("What's my name?", role="user")]},
+            response_granularity=ResponseGranularity.FULL
         )
-
-        result = await compiled.ainvoke({"state": state1})
         final_state = result["state"]
 
         # Verify context grew
-        assert len(final_state.context) > len(state1.context)
+        assert len(final_state.context) >= len(state1.context) + 1
 
         await compiled.aclose()
 
     async def test_agent_error_handling(self):
         """Test Agent handles errors gracefully."""
         agent = Agent(
-            model="gemini/gemini-2.0-flash-exp",
+            model="google/gemini-2.5-flash-lite",
             system_prompt=[
                 {"role": "system", "content": "You are a helpful assistant."}
             ],
@@ -328,14 +313,12 @@ class TestAgentGoogleGemini:
 
         compiled = graph.compile()
 
-        # Empty context should still work
-        state = AgentState()
-        state.context = [
-            Message(id="1", role="user", content="")
-        ]
-
+        # Empty message should still work
         try:
-            result = await compiled.ainvoke({"state": state})
+            result = await compiled.ainvoke(
+                {"messages": [Message.text_message("", role="user")]},
+                response_granularity=ResponseGranularity.FULL
+            )
             # Should complete without crashing
             assert result is not None
         except Exception as e:
@@ -354,7 +337,7 @@ class TestAgentGeminiComplexWorkflows:
         tool_node = ToolNode(tools)
 
         agent = Agent(
-            model="gemini/gemini-2.0-flash-exp",
+            model="google/gemini-2.5-flash-lite",
             system_prompt=[
                 {
                     "role": "system",
@@ -382,26 +365,23 @@ class TestAgentGeminiComplexWorkflows:
         compiled = graph.compile()
 
         # Turn 1
-        state = AgentState()
-        state.context = [
-            Message(id="1", role="user", content="What is 10 + 15?")
-        ]
-
-        result = await compiled.ainvoke({"state": state})
+        result = await compiled.ainvoke(
+            {"messages": [Message.text_message("What is 10 + 15?", role="user")]},
+            response_granularity=ResponseGranularity.FULL
+        )
         state = result["state"]
 
         # Verify response
         assert len(state.context) >= 2
 
-        # Turn 2 - build on previous
-        state.context.append(
-            Message(id="2", role="user", content="Now add 20 to that")
+        # Turn 2 - build on previous messages
+        result = await compiled.ainvoke(
+            {"messages": state.context + [Message.text_message("Now add 20 to that", role="user")]},
+            response_granularity=ResponseGranularity.FULL
         )
-
-        result = await compiled.ainvoke({"state": state})
         final_state = result["state"]
 
         # Verify conversation continued
-        assert len(final_state.context) > len(state.context)
+        assert len(final_state.context) >= len(state.context) + 1
 
         await compiled.aclose()

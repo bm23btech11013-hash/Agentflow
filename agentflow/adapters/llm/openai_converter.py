@@ -22,6 +22,7 @@ from agentflow.state.message_block import (
 )
 
 from .base_converter import BaseConverter
+from .reasoning_utils import parse_think_tags, parse_thought_tags
 
 
 logger = logging.getLogger("agentflow.adapters.openai")
@@ -69,6 +70,15 @@ class OpenAIConverter(BaseConverter):
         if not HAS_OPENAI:
             raise ImportError("openai is not installed. Please install it to use this converter.")
 
+        # Auto-detect Responses API objects and delegate
+        from .openai_responses_converter import is_responses_api_response
+
+        if is_responses_api_response(response):
+            from .openai_responses_converter import OpenAIResponsesConverter
+
+            delegate = OpenAIResponsesConverter(state=self.state)
+            return await delegate.convert_response(response)
+
         # Extract usage information
         usage = response.usage
         usages = TokenUsages(
@@ -80,12 +90,12 @@ class OpenAIConverter(BaseConverter):
             )
             if usage
             else 0,
-            cache_creation_input_tokens=getattr(
+            cache_creation_input_tokens=0,
+            cache_read_input_tokens=getattr(
                 getattr(usage, "prompt_tokens_details", None), "cached_tokens", 0
             )
             if usage
             else 0,
-            cache_read_input_tokens=0,  # OpenAI doesn't expose this separately
         )
 
         # Extract message data
@@ -108,9 +118,23 @@ class OpenAIConverter(BaseConverter):
         message = choice.message
         content = message.content or ""
         reasoning_content = getattr(message, "reasoning_content", "") or ""
+        # OpenRouter returns reasoning in `message.reasoning` (not `reasoning_content`)
+        if not reasoning_content:
+            reasoning_content = getattr(message, "reasoning", "") or ""
         audio_data = getattr(message, "audio", None)
         # OpenAI doesn't directly return images in completion, but we handle it for consistency
         images_data = getattr(message, "images", None)
+
+        # Extract <think>/<thought> tags from content if reasoning_content field is empty
+        # (DeepSeek-R1, Qwen-thinking, Gemini via OpenAI-compatible, and similar models)
+        if not reasoning_content and content:
+            content, think_reasoning = parse_think_tags(content)
+            if think_reasoning:
+                reasoning_content = think_reasoning
+        if not reasoning_content and content:
+            content, thought_reasoning = parse_thought_tags(content)
+            if thought_reasoning:
+                reasoning_content = thought_reasoning
 
         # Build content blocks
         blocks = []
@@ -277,6 +301,9 @@ class OpenAIConverter(BaseConverter):
             if hasattr(delta, "reasoning_content")
             else ""
         )
+        # OpenRouter streams reasoning via `delta.reasoning` (not `reasoning_content`)
+        if not reasoning_part:
+            reasoning_part = getattr(delta, "reasoning", "") or ""
         if reasoning_part:
             content_blocks.append(ReasoningBlock(summary=reasoning_part))
 
@@ -491,6 +518,17 @@ class OpenAIConverter(BaseConverter):
         metadata["node_name"] = node_name
         metadata["thread_id"] = config.get("thread_id")
 
+        # Extract <think>/<thought> tags from accumulated content if no reasoning was
+        # received via the dedicated reasoning_content delta field
+        if not accumulated_reasoning_content and accumulated_content:
+            accumulated_content, think_reasoning = parse_think_tags(accumulated_content)
+            if think_reasoning:
+                accumulated_reasoning_content = think_reasoning
+        if not accumulated_reasoning_content and accumulated_content:
+            accumulated_content, thought_reasoning = parse_thought_tags(accumulated_content)
+            if thought_reasoning:
+                accumulated_reasoning_content = thought_reasoning
+
         blocks = []
         if accumulated_content:
             blocks.append(TextBlock(text=accumulated_content))
@@ -550,6 +588,17 @@ class OpenAIConverter(BaseConverter):
         """
         if not HAS_OPENAI:
             raise ImportError("openai is not installed. Please install it to use this converter.")
+
+        # Auto-detect Responses API objects and delegate
+        from .openai_responses_converter import is_responses_api_response
+
+        if is_responses_api_response(response):
+            from .openai_responses_converter import OpenAIResponsesConverter
+
+            delegate = OpenAIResponsesConverter(state=self.state)
+            async for msg in delegate.convert_streaming_response(config, node_name, response, meta):
+                yield msg
+            return
 
         # Check if it's a streaming response (async generator or iterator)
         if hasattr(response, "__aiter__") or hasattr(response, "__iter__"):

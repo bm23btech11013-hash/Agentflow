@@ -137,8 +137,9 @@ class TestGoogleGenAIConverter:
     async def test_convert_response_with_reasoning(self, converter):
         """Test converting a response with reasoning/thoughts."""
         # Create mock response with text and thought
+        # Google GenAI uses thought=True as a boolean flag; reasoning text is in part.text
         text_part = MockPart(text="The answer is 42")
-        thought_part = MockPart(thought="I need to think deeply about this question")
+        thought_part = MockPart(text="I need to think deeply about this question", thought=True)
         content = MockContent(parts=[text_part, thought_part])
         candidate = MockCandidate(content=content)
         response = MockGenerateContentResponse(candidates=[candidate])
@@ -240,8 +241,9 @@ class TestGoogleGenAIConverter:
     async def test_convert_response_with_multiple_parts(self, converter):
         """Test converting a response with multiple parts."""
         # Create mock response with text, thought, and function call
+        # Google GenAI uses thought=True as a boolean flag; reasoning text is in part.text
         text_part = MockPart(text="Here's what I found:")
-        thought_part = MockPart(thought="Analyzing the request")
+        thought_part = MockPart(text="Analyzing the request", thought=True)
         func_call = MockFunctionCall(name="search", args={"query": "python"})
         func_part = MockPart(function_call=func_call)
 
