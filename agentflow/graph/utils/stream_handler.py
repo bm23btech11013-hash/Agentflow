@@ -99,6 +99,11 @@ class StreamHandler[StateT: AgentState](
             logger.info(
                 "Resuming from interrupted state at node '%s'", state.execution_meta.current_node
             )
+            # Save the interrupted node info before clearing so we don't re-interrupt
+            config["_skip_interrupt_at"] = {
+                "node": state.execution_meta.interrupted_node,
+                "status": state.execution_meta.status,
+            }
             # This is a resume case - clear interrupt and merge input data
             if input_data:
                 config["resume_data"] = input_data
