@@ -3,6 +3,7 @@ from __future__ import annotations
 import inspect
 import json
 import logging
+import warnings
 from collections.abc import AsyncGenerator
 from datetime import datetime
 from typing import Any, cast
@@ -37,6 +38,14 @@ except ImportError:
     CustomStreamWrapper = None
     ModelResponse = None
     ModelResponseStream = None
+
+
+warnings.warn(
+    "LiteLLMConverter is deprecated and will be removed in future versions. "
+    "Please use the updated conversion utilities.",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 
 class LiteLLMConverter(BaseConverter):
