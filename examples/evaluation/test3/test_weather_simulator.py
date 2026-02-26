@@ -5,18 +5,24 @@ Verifies UserSimulator + BatchSimulator + SimulationGoalsCriterion in 3
 focused tests covering: conversation mechanics, goal scoring, and batch runs.
 
 Run:
-    pytest agentflow/evaluation/evaluation_tests/test3/ -v -s
+    pytest examples/evaluation/test3/ -v -s
 """
 
 import pytest
 
+pytest.skip(
+    "Disabled in examples/evaluation so root pytest runs are unaffected.",
+    allow_module_level=True,
+)
+
 from agentflow.evaluation import (
     BatchSimulator,
-    SimulationGoalsCriterion,
     ConversationScenario,
     CriterionConfig,
+    SimulationGoalsCriterion,
     UserSimulator,
 )
+
 
 # ---------------------------------------------------------------------------
 # Scenarios
@@ -49,10 +55,9 @@ GENERAL_KNOWLEDGE = ConversationScenario(
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_judge(threshold: float = 0.5) -> SimulationGoalsCriterion:
-    return SimulationGoalsCriterion(
-        config=CriterionConfig(enabled=True, threshold=threshold)
-    )
+    return SimulationGoalsCriterion(config=CriterionConfig(enabled=True, threshold=threshold))
 
 
 def _failure_msg(result) -> str:
@@ -67,8 +72,8 @@ def _failure_msg(result) -> str:
 # 1. Simulator basics — conversation mechanics + empty scores
 # ---------------------------------------------------------------------------
 
-class TestSimulatorBasic:
 
+class TestSimulatorBasic:
     @pytest.mark.asyncio
     async def test_scenario_completes_with_both_roles(self, weather_app):
         """Simulator completes without errors; conversation has user + assistant."""
@@ -88,8 +93,8 @@ class TestSimulatorBasic:
 # 2. Simulator + SimulationGoalsCriterion — goal scoring
 # ---------------------------------------------------------------------------
 
-class TestSimulatorWithGoals:
 
+class TestSimulatorWithGoals:
     @pytest.mark.asyncio
     async def test_goals_scored_and_pass(self, weather_app):
         """Weather scenario produces a goals score ≥ 0.5, details populated."""
@@ -108,8 +113,8 @@ class TestSimulatorWithGoals:
 # 3. BatchSimulator — multi-scenario batch run
 # ---------------------------------------------------------------------------
 
-class TestBatchSimulator:
 
+class TestBatchSimulator:
     @pytest.mark.asyncio
     async def test_batch_runs_and_scores(self, weather_app):
         """Batch returns one result per scenario; all carry goals scores."""
@@ -121,9 +126,9 @@ class TestBatchSimulator:
 
         assert len(results) == 2
         for result in results:
-            assert "simulation_goals" in result.criterion_scores, (
-                f"Missing score for {result.scenario_id}"
-            )
+            assert (
+                "simulation_goals" in result.criterion_scores
+            ), f"Missing score for {result.scenario_id}"
 
         summary = batch.summary(results)
         assert summary["total_scenarios"] == 2

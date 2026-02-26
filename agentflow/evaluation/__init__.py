@@ -27,29 +27,21 @@ Example:
         expected_tools=[ToolCall(name="get_weather")],
     )
 
-    evaluator = AgentEvaluator(graph, collector=collector, config=EvalConfig(criteria={
-        "tool_name_match_score": CriterionConfig(threshold=1.0),
-    }))
+    evaluator = AgentEvaluator(
+        graph,
+        collector=collector,
+        config=EvalConfig(
+            criteria={
+                "tool_name_match_score": CriterionConfig(threshold=1.0),
+            }
+        ),
+    )
     result = await evaluator.evaluate_case(case)
     assert result.passed
     ```
 """
 
 # --- Dataset ---
-from agentflow.evaluation.dataset.builder import EvalSetBuilder
-from agentflow.evaluation.dataset.eval_set import (
-    EvalCase,
-    EvalSet,
-    Invocation,
-    MessageContent,
-    SessionInput,
-    StepType,
-    ToolCall,
-    TrajectoryStep,
-)
-# --- Execution ---
-from agentflow.evaluation.execution.result import ExecutionResult, NodeResponseData
-
 # --- Collectors (event-based trajectory capture via callback_manager) ---
 from agentflow.evaluation.collectors.trajectory_collector import (
     EventCollector,
@@ -57,40 +49,6 @@ from agentflow.evaluation.collectors.trajectory_collector import (
     TrajectoryCollector,
     make_trajectory_callback,
 )
-
-# --- Criteria: base ---
-from agentflow.evaluation.criteria.base import (
-    BaseCriterion,
-    CompositeCriterion,
-    SyncCriterion,
-    WeightedCriterion,
-)
-from agentflow.evaluation.criteria.llm_utils import LLMCallerMixin
-
-# --- Criteria: trajectory ---
-from agentflow.evaluation.criteria.trajectory import (
-    NodeOrderMatchCriterion,
-    ToolNameMatchCriterion,
-    TrajectoryMatchCriterion,
-)
-
-# --- Criteria: response ---
-from agentflow.evaluation.criteria.response import (
-    ContainsKeywordsCriterion,
-    ExactMatchCriterion,
-    ResponseMatchCriterion,
-    RougeMatchCriterion,
-)
-
-# --- Criteria: LLM-as-judge ---
-from agentflow.evaluation.criteria.simulation_goals import SimulationGoalsCriterion
-from agentflow.evaluation.criteria.llm_judge import LLMJudgeCriterion
-from agentflow.evaluation.criteria.rubric import RubricBasedCriterion
-
-# --- Criteria: advanced ---
-from agentflow.evaluation.criteria.hallucination import HallucinationCriterion
-from agentflow.evaluation.criteria.safety import SafetyCriterion
-from agentflow.evaluation.criteria.factual_accuracy import FactualAccuracyCriterion
 
 # --- Config ---
 from agentflow.evaluation.config.eval_config import (
@@ -103,6 +61,51 @@ from agentflow.evaluation.config.eval_config import (
 )
 from agentflow.evaluation.config.presets import EvalPresets
 
+# --- Criteria: base ---
+from agentflow.evaluation.criteria.base import (
+    BaseCriterion,
+    CompositeCriterion,
+    SyncCriterion,
+    WeightedCriterion,
+)
+from agentflow.evaluation.criteria.factual_accuracy import FactualAccuracyCriterion
+
+# --- Criteria: advanced ---
+from agentflow.evaluation.criteria.hallucination import HallucinationCriterion
+from agentflow.evaluation.criteria.llm_judge import LLMJudgeCriterion
+from agentflow.evaluation.criteria.llm_utils import LLMCallerMixin
+
+# --- Criteria: response ---
+from agentflow.evaluation.criteria.response import (
+    ContainsKeywordsCriterion,
+    ExactMatchCriterion,
+    ResponseMatchCriterion,
+    RougeMatchCriterion,
+)
+from agentflow.evaluation.criteria.rubric import RubricBasedCriterion
+from agentflow.evaluation.criteria.safety import SafetyCriterion
+
+# --- Criteria: LLM-as-judge ---
+from agentflow.evaluation.criteria.simulation_goals import SimulationGoalsCriterion
+
+# --- Criteria: trajectory ---
+from agentflow.evaluation.criteria.trajectory import (
+    NodeOrderMatchCriterion,
+    ToolNameMatchCriterion,
+    TrajectoryMatchCriterion,
+)
+from agentflow.evaluation.dataset.builder import EvalSetBuilder
+from agentflow.evaluation.dataset.eval_set import (
+    EvalCase,
+    EvalSet,
+    Invocation,
+    MessageContent,
+    SessionInput,
+    StepType,
+    ToolCall,
+    TrajectoryStep,
+)
+
 # --- Results ---
 from agentflow.evaluation.eval_result import (
     CriterionResult,
@@ -111,16 +114,19 @@ from agentflow.evaluation.eval_result import (
     EvalSummary,
 )
 
+# --- Evaluator ---
+from agentflow.evaluation.evaluator import AgentEvaluator, EvaluationRunner
+
+# --- Execution ---
+from agentflow.evaluation.execution.result import ExecutionResult, NodeResponseData
+from agentflow.evaluation.quick_eval import QuickEval
+
 # --- Reporters ---
 from agentflow.evaluation.reporters.base import BaseReporter
 from agentflow.evaluation.reporters.console import Colors, ConsoleReporter, print_report
 from agentflow.evaluation.reporters.html import HTMLReporter
 from agentflow.evaluation.reporters.json import JSONReporter, JUnitXMLReporter
 from agentflow.evaluation.reporters.manager import ReporterManager, ReporterOutput
-
-# --- Evaluator ---
-from agentflow.evaluation.evaluator import AgentEvaluator, EvaluationRunner
-from agentflow.evaluation.quick_eval import QuickEval
 
 # --- Simulators ---
 from agentflow.evaluation.simulators import (
@@ -159,42 +165,34 @@ __all__ = [
     # --- Execution ---
     "ExecutionResult",
     "NodeResponseData",
-
     # --- Collectors ---
     "TrajectoryCollector",
     "EventCollector",
     "PublisherCallback",
     "make_trajectory_callback",
-
     # --- Criteria: base ---
     "BaseCriterion",
     "SyncCriterion",
     "CompositeCriterion",
     "WeightedCriterion",
     "LLMCallerMixin",
-
     # --- Criteria: trajectory ---
     "TrajectoryMatchCriterion",
     "ToolNameMatchCriterion",
     "NodeOrderMatchCriterion",
-
     # --- Criteria: response ---
     "ResponseMatchCriterion",
     "RougeMatchCriterion",
     "ExactMatchCriterion",
     "ContainsKeywordsCriterion",
-
     # --- Criteria: LLM-as-judge ---
     "SimulationGoalsCriterion",
     "LLMJudgeCriterion",
-
     "RubricBasedCriterion",
-
     # --- Criteria: advanced ---
     "HallucinationCriterion",
     "SafetyCriterion",
     "FactualAccuracyCriterion",
-
     # --- Config ---
     "EvalConfig",
     "CriterionConfig",
@@ -203,13 +201,11 @@ __all__ = [
     "UserSimulatorConfig",
     "ReporterConfig",
     "EvalPresets",
-
     # --- Results ---
     "CriterionResult",
     "EvalCaseResult",
     "EvalReport",
     "EvalSummary",
-
     # --- Reporters ---
     "BaseReporter",
     "ConsoleReporter",
@@ -220,18 +216,15 @@ __all__ = [
     "ReporterManager",
     "ReporterOutput",
     "print_report",
-
     # --- Evaluator ---
     "AgentEvaluator",
     "EvaluationRunner",
     "QuickEval",
-
     # --- Simulators ---
     "UserSimulator",
     "BatchSimulator",
     "ConversationScenario",
     "SimulationResult",
-
     # --- Testing ---
     "run_eval",
     "create_eval_app",

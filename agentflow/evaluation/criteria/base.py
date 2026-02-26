@@ -14,9 +14,9 @@ from agentflow.evaluation.eval_result import CriterionResult
 
 
 if TYPE_CHECKING:
-    from agentflow.evaluation.execution.result import ExecutionResult
     from agentflow.evaluation.config.eval_config import CriterionConfig
     from agentflow.evaluation.dataset.eval_set import EvalCase, Invocation
+    from agentflow.evaluation.execution.result import ExecutionResult
 
 
 class BaseCriterion(ABC):
@@ -68,6 +68,7 @@ class BaseCriterion(ABC):
                 uses default configuration.
         """
         from agentflow.evaluation.config.eval_config import CriterionConfig as _CriterionConfig
+
         self.config = config or _CriterionConfig()
 
     @abstractmethod
@@ -111,6 +112,7 @@ class BaseCriterion(ABC):
         """
         # Create a temporary EvalCase for single invocation
         from agentflow.evaluation.dataset.eval_set import EvalCase
+
         temp_case = EvalCase(eval_id="single_invocation", conversation=[expected])
         return await self.evaluate(actual, temp_case)
 
@@ -286,8 +288,7 @@ class WeightedCriterion(BaseCriterion):
             threshold=self.threshold,
             details={
                 "sub_results": [
-                    {"criterion": r.criterion, "score": r.score, "weight": w}
-                    for r, w in results
+                    {"criterion": r.criterion, "score": r.score, "weight": w} for r, w in results
                 ],
             },
         )

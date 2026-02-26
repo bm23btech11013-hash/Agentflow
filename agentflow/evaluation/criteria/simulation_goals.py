@@ -25,13 +25,16 @@ from agentflow.evaluation.criteria.base import BaseCriterion
 from agentflow.evaluation.criteria.llm_utils import LLMCallerMixin
 from agentflow.evaluation.eval_result import CriterionResult
 
+
 if TYPE_CHECKING:
     from agentflow.evaluation.dataset.eval_set import EvalCase
     from agentflow.evaluation.execution.result import ExecutionResult
 
 logger = logging.getLogger("agentflow.evaluation")
 
-CONVERSATION_GOALS_PROMPT = """You are evaluating whether an AI assistant achieved specific goals across a multi-turn conversation.
+CONVERSATION_GOALS_PROMPT = (
+    """You are evaluating whether an AI assistant achieved specific goals """
+    """across a multi-turn conversation.
 
 CONVERSATION TRANSCRIPT:
 {conversation}
@@ -39,7 +42,8 @@ CONVERSATION TRANSCRIPT:
 GOALS TO ACHIEVE:
 {goals}
 
-For each goal, determine if it was achieved at any point during the conversation — not just in the final message.
+For each goal, determine if it was achieved at any point during the conversation -
+not just in the final message.
 
 Respond with a JSON object:
 {{
@@ -51,6 +55,7 @@ Respond with a JSON object:
 
 Score = number_of_achieved_goals / total_goals.
 """
+)
 
 
 class SimulationGoalsCriterion(LLMCallerMixin, BaseCriterion):
@@ -66,17 +71,13 @@ class SimulationGoalsCriterion(LLMCallerMixin, BaseCriterion):
     list of goals (from the ``EvalCase`` expected response), then checks
     whether each goal was addressed at any point during the conversation.
 
-    Score: ``achieved_goals / total_goals``  (0.0 – 1.0)
+    Score: ``achieved_goals / total_goals``  (0.0 - 1.0)
 
     Example::
 
-        from agentflow.evaluation import (
-            SimulationGoalsCriterion, CriterionConfig, UserSimulator
-        )
+        from agentflow.evaluation import SimulationGoalsCriterion, CriterionConfig, UserSimulator
 
-        judge = SimulationGoalsCriterion(
-            config=CriterionConfig(threshold=0.7)
-        )
+        judge = SimulationGoalsCriterion(config=CriterionConfig(threshold=0.7))
         simulator = UserSimulator(
             model="gemini/gemini-2.5-flash",
             criteria=[judge],
@@ -86,9 +87,7 @@ class SimulationGoalsCriterion(LLMCallerMixin, BaseCriterion):
     """
 
     name = "simulation_goals"
-    description = (
-        "LLM-based goal achievement evaluation for UserSimulator conversations"
-    )
+    description = "LLM-based goal achievement evaluation for UserSimulator conversations"
 
     async def evaluate(
         self,

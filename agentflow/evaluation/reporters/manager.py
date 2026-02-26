@@ -9,12 +9,12 @@ in the correct output directory with timestamped filenames.
 from __future__ import annotations
 
 import logging
-import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from agentflow.evaluation.reporters._utils import format_timestamp
+
 
 if TYPE_CHECKING:
     from agentflow.evaluation.config.eval_config import ReporterConfig
@@ -100,7 +100,7 @@ class ReporterManager:
         # Resolve relative output_dir relative to the current working
         # directory so that reports land in the user's project tree
         # regardless of how agentflow was installed.
-        if not os.path.isabs(out_dir):
+        if not Path(out_dir).is_absolute():
             out_dir = str(Path.cwd() / out_dir)
 
         result = ReporterOutput()
@@ -150,9 +150,7 @@ class ReporterManager:
                 use_color=True,
                 verbose=self.config.verbose,
                 include_trajectory=self.config.include_trajectory,
-                include_actual_response=getattr(
-                    self.config, "include_actual_response", True
-                ),
+                include_actual_response=getattr(self.config, "include_actual_response", True),
             )
             reporter.report(report)
             return True
@@ -175,17 +173,11 @@ class ReporterManager:
                 indent=2,
                 include_details=self.config.include_details,
                 include_trajectory=self.config.include_trajectory,
-                include_node_responses=getattr(
-                    self.config, "include_node_responses", True
-                ),
-                include_actual_response=getattr(
-                    self.config, "include_actual_response", True
-                ),
-                include_tool_call_details=getattr(
-                    self.config, "include_tool_call_details", True
-                ),
+                include_node_responses=getattr(self.config, "include_node_responses", True),
+                include_actual_response=getattr(self.config, "include_actual_response", True),
+                include_tool_call_details=getattr(self.config, "include_tool_call_details", True),
             )
-            path = os.path.join(out_dir, f"{stem}.json")
+            path = str(Path(out_dir) / f"{stem}.json")
             reporter.save(report, path)
             logger.info("JSON report saved: %s", path)
             return path
@@ -206,18 +198,12 @@ class ReporterManager:
 
             reporter = HTMLReporter(
                 include_details=self.config.include_details,
-                include_actual_response=getattr(
-                    self.config, "include_actual_response", True
-                ),
-                include_tool_call_details=getattr(
-                    self.config, "include_tool_call_details", True
-                ),
-                include_node_responses=getattr(
-                    self.config, "include_node_responses", True
-                ),
+                include_actual_response=getattr(self.config, "include_actual_response", True),
+                include_tool_call_details=getattr(self.config, "include_tool_call_details", True),
+                include_node_responses=getattr(self.config, "include_node_responses", True),
                 include_trajectory=self.config.include_trajectory,
             )
-            path = os.path.join(out_dir, f"{stem}.html")
+            path = str(Path(out_dir) / f"{stem}.html")
             reporter.save(report, path)
             logger.info("HTML report saved: %s", path)
             return path
@@ -237,7 +223,7 @@ class ReporterManager:
             from agentflow.evaluation.reporters.json import JUnitXMLReporter
 
             reporter = JUnitXMLReporter()
-            path = os.path.join(out_dir, f"{stem}_junit.xml")
+            path = str(Path(out_dir) / f"{stem}_junit.xml")
             reporter.save(report, path)
             logger.info("JUnit XML report saved: %s", path)
             return path

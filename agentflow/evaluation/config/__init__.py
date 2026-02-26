@@ -22,8 +22,8 @@ Example:
 """
 
 from .eval_config import (
-    CriterionConfig,
     DEFAULT_JUDGE_MODEL,
+    CriterionConfig,
     EvalConfig,
     MatchType,
     ReporterConfig,

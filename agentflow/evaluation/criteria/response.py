@@ -16,8 +16,8 @@ from agentflow.evaluation.eval_result import CriterionResult
 
 
 if TYPE_CHECKING:
-    from agentflow.evaluation.execution.result import ExecutionResult
     from agentflow.evaluation.dataset.eval_set import EvalCase
+    from agentflow.evaluation.execution.result import ExecutionResult
 
 
 class ResponseMatchCriterion(LLMJudgeCriterion):

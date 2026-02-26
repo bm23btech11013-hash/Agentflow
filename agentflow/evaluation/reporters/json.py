@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any
 
 from agentflow.evaluation.reporters.base import BaseReporter
 
+
 if TYPE_CHECKING:
     from agentflow.evaluation.eval_result import EvalReport
 
@@ -195,7 +196,7 @@ class JUnitXMLReporter(BaseReporter):
         self.save(report, path)
         return path
 
-    def to_xml(self, report: EvalReport) -> str:
+    def to_xml(self, report: EvalReport) -> str:  # noqa: PLR0912, PLR0915
         """Convert report to JUnit XML format.
 
         Args:
@@ -270,7 +271,9 @@ class JUnitXMLReporter(BaseReporter):
                     if cr.error:
                         failure_body_parts.append(f"Error: {cr.error}")
                     if cr.details:
-                        failure_body_parts.append(f"Details: {json.dumps(cr.details, default=str, indent=2)}")
+                        failure_body_parts.append(
+                            f"Details: {json.dumps(cr.details, default=str, indent=2)}"
+                        )
                     failure.text = "\n".join(failure_body_parts) if failure_body_parts else None
 
             # Add system-out with full case data for every test case
@@ -281,33 +284,52 @@ class JUnitXMLReporter(BaseReporter):
                 out_parts.append(f"=== Agent Response ===\n{result.actual_response}")
 
             if result.actual_tool_calls:
-                tc_data = [tc.model_dump() if hasattr(tc, 'model_dump') else tc for tc in result.actual_tool_calls]
-                out_parts.append(f"=== Tool Calls ({len(tc_data)}) ===\n{json.dumps(tc_data, default=str, indent=2)}")
+                tc_data = [
+                    tc.model_dump() if hasattr(tc, "model_dump") else tc
+                    for tc in result.actual_tool_calls
+                ]
+                tc_json = json.dumps(tc_data, default=str, indent=2)
+                out_parts.append(f"=== Tool Calls ({len(tc_data)}) ===\n{tc_json}")
 
             if result.actual_trajectory:
-                traj_data = [s.model_dump() if hasattr(s, 'model_dump') else s for s in result.actual_trajectory]
-                out_parts.append(f"=== Trajectory ({len(traj_data)} steps) ===\n{json.dumps(traj_data, default=str, indent=2)}")
+                traj_data = [
+                    s.model_dump() if hasattr(s, "model_dump") else s
+                    for s in result.actual_trajectory
+                ]
+                traj_json = json.dumps(traj_data, default=str, indent=2)
+                out_parts.append(f"=== Trajectory ({len(traj_data)} steps) ===\n{traj_json}")
 
             if getattr(result, "node_visits", None):
                 out_parts.append(f"=== Node Visits ===\n{' -> '.join(result.node_visits)}")
 
             if getattr(result, "node_responses", None):
-                out_parts.append(f"=== Node Responses ({len(result.node_responses)}) ===\n{json.dumps(result.node_responses, default=str, indent=2)}")
+                nr_json = json.dumps(result.node_responses, default=str, indent=2)
+                out_parts.append(
+                    f"=== Node Responses ({len(result.node_responses)}) ===" f"\n{nr_json}"
+                )
 
             if getattr(result, "messages", None):
-                out_parts.append(f"=== Messages ({len(result.messages)}) ===\n{json.dumps(result.messages, default=str, indent=2)}")
+                msg_json = json.dumps(result.messages, default=str, indent=2)
+                out_parts.append(f"=== Messages ({len(result.messages)}) ===\n{msg_json}")
 
             if getattr(result, "metadata", None):
-                out_parts.append(f"=== Metadata ===\n{json.dumps(result.metadata, default=str, indent=2)}")
+                out_parts.append(
+                    f"=== Metadata ===\n{json.dumps(result.metadata, default=str, indent=2)}"
+                )
 
             if getattr(result, "turn_results", None):
-                out_parts.append(f"=== Turn Results ({len(result.turn_results)}) ===\n{json.dumps(result.turn_results, default=str, indent=2)}")
+                tr_json = json.dumps(result.turn_results, default=str, indent=2)
+                out_parts.append(
+                    f"=== Turn Results ({len(result.turn_results)}) ===" f"\n{tr_json}"
+                )
 
             # Include ALL criteria results (passed + failed)
             cr_parts = []
             for cr in result.criterion_results:
                 cr_status = "PASS" if cr.passed else "FAIL"
-                cr_parts.append(f"  [{cr_status}] {cr.criterion}: {cr.score:.2f} (threshold: {cr.threshold})")
+                cr_parts.append(
+                    f"  [{cr_status}] {cr.criterion}: {cr.score:.2f} (threshold: {cr.threshold})"
+                )
                 if cr.reason:
                     cr_parts.append(f"    Reason: {cr.reason}")
                 if cr.details:

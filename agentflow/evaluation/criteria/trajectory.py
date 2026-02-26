@@ -9,15 +9,15 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from agentflow.evaluation.criteria.base import SyncCriterion
 from agentflow.evaluation.config.eval_config import MatchType
-from agentflow.evaluation.eval_result import CriterionResult
+from agentflow.evaluation.criteria.base import SyncCriterion
 from agentflow.evaluation.dataset.eval_set import ToolCall
+from agentflow.evaluation.eval_result import CriterionResult
 
 
 if TYPE_CHECKING:
-    from agentflow.evaluation.execution.result import ExecutionResult
     from agentflow.evaluation.dataset.eval_set import EvalCase
+    from agentflow.evaluation.execution.result import ExecutionResult
 
 
 class TrajectoryMatchCriterion(SyncCriterion):
@@ -94,8 +94,7 @@ class TrajectoryMatchCriterion(SyncCriterion):
             return matches / len(expected)
 
         matches = sum(
-            1 for a, e in zip(actual, expected, strict=False)
-            if self._tools_match(a, e, check_args)
+            1 for a, e in zip(actual, expected, strict=False) if self._tools_match(a, e, check_args)
         )
         return matches / len(expected)
 
@@ -198,11 +197,10 @@ class NodeOrderMatchCriterion(SyncCriterion):
         if len(actual) != len(expected):
             min_len = min(len(actual), len(expected))
             matches = sum(
-                1 for a, e in zip(actual[:min_len], expected[:min_len])
-                if a == e
+                1 for a, e in zip(actual[:min_len], expected[:min_len], strict=False) if a == e
             )
             return matches / len(expected)
-        matches = sum(1 for a, e in zip(actual, expected) if a == e)
+        matches = sum(1 for a, e in zip(actual, expected, strict=False) if a == e)
         return matches / len(expected)
 
     @staticmethod

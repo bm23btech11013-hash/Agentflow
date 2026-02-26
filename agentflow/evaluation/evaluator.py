@@ -14,32 +14,36 @@ import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from agentflow.evaluation.collectors.trajectory_collector import (
+    TrajectoryCollector,
+    make_trajectory_callback,
+)
+from agentflow.evaluation.config.eval_config import CriterionConfig, EvalConfig
 from agentflow.evaluation.criteria.base import BaseCriterion
-from agentflow.evaluation.criteria.simulation_goals import SimulationGoalsCriterion
 from agentflow.evaluation.criteria.factual_accuracy import FactualAccuracyCriterion
 from agentflow.evaluation.criteria.hallucination import HallucinationCriterion
 from agentflow.evaluation.criteria.llm_judge import LLMJudgeCriterion
-from agentflow.evaluation.criteria.rubric import RubricBasedCriterion
 from agentflow.evaluation.criteria.response import (
     ContainsKeywordsCriterion,
     ExactMatchCriterion,
     ResponseMatchCriterion,
     RougeMatchCriterion,
 )
+from agentflow.evaluation.criteria.rubric import RubricBasedCriterion
 from agentflow.evaluation.criteria.safety import SafetyCriterion
-from agentflow.evaluation.criteria.trajectory import NodeOrderMatchCriterion, ToolNameMatchCriterion, TrajectoryMatchCriterion
-from agentflow.evaluation.config.eval_config import CriterionConfig, EvalConfig
+from agentflow.evaluation.criteria.simulation_goals import SimulationGoalsCriterion
+from agentflow.evaluation.criteria.trajectory import (
+    NodeOrderMatchCriterion,
+    ToolNameMatchCriterion,
+    TrajectoryMatchCriterion,
+)
+from agentflow.evaluation.dataset.eval_set import EvalCase, EvalSet
 from agentflow.evaluation.eval_result import (
     CriterionResult,
     EvalCaseResult,
     EvalReport,
 )
-from agentflow.evaluation.dataset.eval_set import EvalCase, EvalSet, StepType
 from agentflow.evaluation.execution.result import ExecutionResult, NodeResponseData
-from agentflow.evaluation.collectors.trajectory_collector import (
-    TrajectoryCollector,
-    make_trajectory_callback,
-)
 
 
 if TYPE_CHECKING:
@@ -147,33 +151,33 @@ class AgentEvaluator:
         """
         criterion_map = {
             # Trajectory / tool matching (no LLM)
-            "tool_trajectory_avg_score":               TrajectoryMatchCriterion,
-            "trajectory_match":                        TrajectoryMatchCriterion,
-            "tool_name_match_score":                   ToolNameMatchCriterion,
+            "tool_trajectory_avg_score": TrajectoryMatchCriterion,
+            "trajectory_match": TrajectoryMatchCriterion,
+            "tool_name_match_score": ToolNameMatchCriterion,
             # Node order matching (no LLM)
-            "node_order_score":                        NodeOrderMatchCriterion,
-            "node_order":                              NodeOrderMatchCriterion,
+            "node_order_score": NodeOrderMatchCriterion,
+            "node_order": NodeOrderMatchCriterion,
             # Response matching
-            "response_match_score":                    ResponseMatchCriterion,
-            "response_match":                          ResponseMatchCriterion,
-            "rouge_match":                             RougeMatchCriterion,
-            "exact_match":                             ExactMatchCriterion,
-            "contains_keywords":                       ContainsKeywordsCriterion,
+            "response_match_score": ResponseMatchCriterion,
+            "response_match": ResponseMatchCriterion,
+            "rouge_match": RougeMatchCriterion,
+            "exact_match": ExactMatchCriterion,
+            "contains_keywords": ContainsKeywordsCriterion,
             # LLM-as-judge
-            "final_response_match_v2":                 LLMJudgeCriterion,
-            "llm_judge":                               LLMJudgeCriterion,
-            "rubric_based_final_response_quality_v1":  RubricBasedCriterion,
-            "rubric_based":                            RubricBasedCriterion,
+            "final_response_match_v2": LLMJudgeCriterion,
+            "llm_judge": LLMJudgeCriterion,
+            "rubric_based_final_response_quality_v1": RubricBasedCriterion,
+            "rubric_based": RubricBasedCriterion,
             # Specialised LLM criteria
-            "hallucinations_v1":                       HallucinationCriterion,
-            "hallucination":                           HallucinationCriterion,
-            "safety_v1":                               SafetyCriterion,
-            "safety":                                  SafetyCriterion,
-            "factual_accuracy_v1":                     FactualAccuracyCriterion,
-            "factual_accuracy":                        FactualAccuracyCriterion,
+            "hallucinations_v1": HallucinationCriterion,
+            "hallucination": HallucinationCriterion,
+            "safety_v1": SafetyCriterion,
+            "safety": SafetyCriterion,
+            "factual_accuracy_v1": FactualAccuracyCriterion,
+            "factual_accuracy": FactualAccuracyCriterion,
             # Simulation / multi-turn (UserSimulator only)
-            "simulation_goals":                        SimulationGoalsCriterion,
-            "conversation_goals":                      SimulationGoalsCriterion,
+            "simulation_goals": SimulationGoalsCriterion,
+            "conversation_goals": SimulationGoalsCriterion,
         }
 
         criterion_class = criterion_map.get(name)
@@ -182,7 +186,9 @@ class AgentEvaluator:
 
         available = ", ".join(sorted(criterion_map.keys()))
         logger.warning(
-            "Unknown criterion '%s'. Available: %s", name, available,
+            "Unknown criterion '%s'. Available: %s",
+            name,
+            available,
         )
         return None
 
@@ -445,7 +451,7 @@ class AgentEvaluator:
             duration_seconds=collector.duration,
         )
 
-    async def _evaluate_case(
+    async def _evaluate_case(  # noqa: PLR0912, PLR0915
         self,
         case: EvalCase,
         collector_override: TrajectoryCollector | None = None,
@@ -511,16 +517,14 @@ class AgentEvaluator:
                 # snapshots capture only that turn's data, not cumulative.
                 collector.reset()
                 user_text = invocation.user_content.get_text()
-                cumulative_messages.append(
-                    Message.text_message(user_text, role="user")
-                )
+                cumulative_messages.append(Message.text_message(user_text, role="user"))
 
                 state_dict: dict[str, Any] = {
                     "messages": list(cumulative_messages),
                 }
 
                 try:
-                    result_state = await graph.ainvoke(state_dict, config=config)
+                    await graph.ainvoke(state_dict, config=config)
                 except Exception as exc:
                     logger.warning(
                         "Graph execution failed for case %s turn %d: %s",
@@ -538,14 +542,16 @@ class AgentEvaluator:
 
                 # Capture per-turn data for multi-turn transparency
                 turn_response = collector.final_response or ""
-                turn_results.append({
-                    "turn_index": turn_idx,
-                    "user_input": user_text,
-                    "agent_response": turn_response,
-                    "tool_calls": [tc.model_dump() for tc in collector.tool_calls],
-                    "node_visits": list(collector.node_visits),
-                    "trajectory_steps": len(collector.trajectory),
-                })
+                turn_results.append(
+                    {
+                        "turn_index": turn_idx,
+                        "user_input": user_text,
+                        "agent_response": turn_response,
+                        "tool_calls": [tc.model_dump() for tc in collector.tool_calls],
+                        "node_visits": list(collector.node_visits),
+                        "trajectory_steps": len(collector.trajectory),
+                    }
+                )
 
                 # Accumulate across turns for the full-conversation
                 # ExecutionResult that criteria will evaluate.
@@ -646,7 +652,7 @@ class AgentEvaluator:
                 node_visits=execution.node_visits,
                 duration_seconds=duration,
                 name=case.name,
-                metadata=case.metadata if hasattr(case, 'metadata') else {},
+                metadata=case.metadata if hasattr(case, "metadata") else {},
                 turn_results=turn_results,
             )
 
@@ -736,6 +742,7 @@ class AgentEvaluator:
         graph = cls._load_graph(agent_module)
         config = cls._load_config(config_file) if config_file else None
         from agentflow.evaluation.collectors import TrajectoryCollector, make_trajectory_callback
+
         collector = TrajectoryCollector(capture_all_events=True)
         _, callback_mgr = make_trajectory_callback(collector)
         # Re-compile with the collector's callback_manager
@@ -799,6 +806,7 @@ class AgentEvaluator:
 # Batch runner
 # ---------------------------------------------------------------------------
 
+
 class EvaluationRunner:
     """Batch evaluation runner for multiple eval sets.
 
@@ -808,10 +816,12 @@ class EvaluationRunner:
     Example:
         ```python
         runner = EvaluationRunner()
-        reports = await runner.run([
-            (graph_a, eval_set_a),
-            (graph_b, eval_set_b),
-        ])
+        reports = await runner.run(
+            [
+                (graph_a, eval_set_a),
+                (graph_b, eval_set_b),
+            ]
+        )
         print(runner.summary)
         ```
     """
@@ -876,12 +886,12 @@ class EvaluationRunner:
         if not self.results:
             return {"total_evaluations": 0}
 
-        total_cases  = sum(r.summary.total_cases  for r in self.results.values())
+        total_cases = sum(r.summary.total_cases for r in self.results.values())
         passed_cases = sum(r.summary.passed_cases for r in self.results.values())
 
         return {
             "total_evaluations": len(self.results),
-            "total_cases":       total_cases,
-            "passed_cases":      passed_cases,
+            "total_cases": total_cases,
+            "passed_cases": passed_cases,
             "overall_pass_rate": passed_cases / total_cases if total_cases > 0 else 0.0,
         }

@@ -13,8 +13,8 @@ from agentflow.evaluation.eval_result import CriterionResult
 
 
 if TYPE_CHECKING:
-    from agentflow.evaluation.execution.result import ExecutionResult
     from agentflow.evaluation.dataset.eval_set import EvalCase
+    from agentflow.evaluation.execution.result import ExecutionResult
 
 logger = logging.getLogger("agentflow.evaluation")
 
@@ -102,9 +102,7 @@ class FactualAccuracyCriterion(LLMCallerMixin, BaseCriterion):
             logger.error("Factual accuracy evaluation failed: %s", e)
             return CriterionResult.failure(criterion=self.name, error=str(e))
 
-    async def _run_samples(
-        self, prompt: str
-    ) -> tuple[list[float], list[str], list[str]]:
+    async def _run_samples(self, prompt: str) -> tuple[list[float], list[str], list[str]]:
         """Run majority-voting samples and collect scores, errors, and reasonings."""
         scores: list[float] = []
         all_errors: list[str] = []

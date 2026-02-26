@@ -1,7 +1,7 @@
 """
 EvalCase definitions for the weather agent eval suite.
 
-All cases are defined in the shared evaluation_tests/samples.py and
+All cases are defined in the shared examples/evaluation/samples.py and
 re-exported here so test1 imports remain unchanged.
 """
 

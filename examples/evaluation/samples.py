@@ -10,7 +10,8 @@ Sections:
 """
 
 from agentflow.evaluation.dataset import EvalCase, ToolCall
-from agentflow.evaluation.dataset.eval_set import EvalSet, Invocation, MessageContent
+from agentflow.evaluation.dataset.eval_set import EvalSet, Invocation
+
 
 # ═══════════════════════════════════════════════════════════════════════
 # 1. Happy-path: agent should call get_weather and return a sunny response
@@ -48,7 +49,7 @@ MULTI_CITY = EvalCase.single_turn(
     eval_id="multi_city",
     name="Multi-city — tool called",
     user_query="Get weather for both Paris and Berlin",
-    expected_response="",           # no strict output — just check tool was called
+    expected_response="",  # no strict output — just check tool was called
     expected_tools=[ToolCall(name="get_weather")],
 )
 
@@ -57,7 +58,7 @@ CAPITAL_QUESTION = EvalCase.single_turn(
     name="General knowledge — no tool",
     user_query="What is the capital of France?",
     expected_response="Paris",
-    expected_tools=[],              # empty → assert zero tool calls
+    expected_tools=[],  # empty → assert zero tool calls
 )
 
 # ---------------------------------------------------------------------------
@@ -66,8 +67,8 @@ CAPITAL_QUESTION = EvalCase.single_turn(
 
 HAPPY_PATH_CASES = [NYC, LONDON, TOKYO]
 MULTI_CITY_CASES = [MULTI_CITY]
-NO_TOOL_CASES    = [CAPITAL_QUESTION]
-ALL_CASES        = HAPPY_PATH_CASES + MULTI_CITY_CASES + NO_TOOL_CASES
+NO_TOOL_CASES = [CAPITAL_QUESTION]
+ALL_CASES = HAPPY_PATH_CASES + MULTI_CITY_CASES + NO_TOOL_CASES
 
 # ---------------------------------------------------------------------------
 # EvalSet — ready for AgentEvaluator.evaluate(EVAL_SET)
@@ -120,8 +121,7 @@ FORECAST_THEN_WEATHER = EvalCase.single_turn(
     name="Trajectory — forecast then weather (reversed)",
     description="Agent must call get_forecast first, then get_weather.",
     user_query=(
-        "Give me the forecast for London first, "
-        "and then tell me the current weather there."
+        "Give me the forecast for London first, " "and then tell me the current weather there."
     ),
     expected_response="sunny",
     expected_tools=[
@@ -229,8 +229,7 @@ MIXED_TOOL_SEQUENCE = EvalCase.single_turn(
         "for one of them. IN_ORDER match validates sequence."
     ),
     user_query=(
-        "Tell me the current weather in Paris and Rome, "
-        "then give me a 3-day forecast for Paris."
+        "Tell me the current weather in Paris and Rome, " "then give me a 3-day forecast for Paris."
     ),
     expected_response="sunny",
     expected_tools=[

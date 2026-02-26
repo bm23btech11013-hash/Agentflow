@@ -4,6 +4,7 @@ EvalCase definitions for test2 — single-turn all-criteria evaluation.
 
 from agentflow.evaluation.dataset import EvalCase, ToolCall
 
+
 # ── Weather query (expects get_weather) ──────────────────────────────
 WEATHER_NYC = EvalCase.single_turn(
     eval_id="st_weather_nyc",

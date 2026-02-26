@@ -456,9 +456,7 @@ class Agent(BaseAgent):
                 return str(content) if content else ""
         return ""
 
-    def _convert_to_google_format(
-        self, messages: list[dict[str, Any]]
-    ) -> tuple[str | None, list]:
+    def _convert_to_google_format(self, messages: list[dict[str, Any]]) -> tuple[str | None, list]:
         """Convert messages to Google GenAI format with proper Content objects.
 
         Converts OpenAI-format message dicts into ``google.genai.types.Content``
@@ -517,11 +515,7 @@ class Agent(BaseAgent):
                     except (_json.JSONDecodeError, TypeError):
                         fn_args = {}
                     parts.append(
-                        types.Part(
-                            function_call=types.FunctionCall(
-                                name=fn_name, args=fn_args
-                            )
-                        )
+                        types.Part(function_call=types.FunctionCall(name=fn_name, args=fn_args))
                     )
                 google_contents.append(types.Content(role="model", parts=parts))
                 continue

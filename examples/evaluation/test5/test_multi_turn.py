@@ -9,13 +9,18 @@ test5 — AgentEvaluator API & Config deep-dive tests (compact).
   5. Auto-reporter — JSON + HTML file generation
 
 Run:
-    pytest agentflow/evaluation/evaluation_tests/test5/ -v -s
+    pytest examples/evaluation/test5/ -v -s
 """
 
 import tempfile
 from pathlib import Path
 
 import pytest
+
+pytest.skip(
+    "Disabled in examples/evaluation so root pytest runs are unaffected.",
+    allow_module_level=True,
+)
 
 from agentflow.evaluation import (
     AgentEvaluator,
@@ -26,7 +31,6 @@ from agentflow.evaluation import (
     EvaluationRunner,
     ReporterConfig,
     Rubric,
-    assert_eval_passed,
 )
 from agentflow.evaluation.dataset.eval_set import EvalSet
 
@@ -37,8 +41,8 @@ from .samples import NO_TOOL_CASE, SMALL_EVAL_SET, WEATHER_CASE
 # 1. evaluate_case() — result structure + inspection
 # ═══════════════════════════════════════════════════════════════════════
 
-class TestEvaluateCase:
 
+class TestEvaluateCase:
     @pytest.mark.asyncio
     async def test_result_structure_and_fields(self, compiled_graph, collector):
         """evaluate_case() returns correct id, scores, duration, response, tools."""
@@ -73,8 +77,8 @@ class TestEvaluateCase:
 # 2. evaluate() — batch report
 # ═══════════════════════════════════════════════════════════════════════
 
-class TestEvaluateBatch:
 
+class TestEvaluateBatch:
     @pytest.mark.asyncio
     async def test_report_structure(self, compiled_graph, collector):
         """evaluate() returns EvalReport with all cases and correct eval_set_id."""
@@ -95,8 +99,8 @@ class TestEvaluateBatch:
 # 3. EvalConfig — rubrics + enable/disable
 # ═══════════════════════════════════════════════════════════════════════
 
-class TestConfigAndRubrics:
 
+class TestConfigAndRubrics:
     @pytest.mark.asyncio
     async def test_rubrics_and_disable(self, compiled_graph, collector):
         """with_rubrics() adds rubric criterion; disable removes one."""
@@ -135,8 +139,8 @@ class TestConfigAndRubrics:
 # 4. Presets + EvaluationRunner
 # ═══════════════════════════════════════════════════════════════════════
 
-class TestPresetsAndRunner:
 
+class TestPresetsAndRunner:
     @pytest.mark.asyncio
     async def test_presets_compare_and_runner(self, compiled_graph, collector):
         """Comprehensive has more criteria; runner aggregates multiple sets."""
@@ -162,10 +166,12 @@ class TestPresetsAndRunner:
             reporter={"enabled": True},
         )
         runner = EvaluationRunner(default_config=runner_cfg)
-        results = await runner.run([
-            (compiled_graph, collector, set_a),
-            (compiled_graph, collector, set_b),
-        ])
+        results = await runner.run(
+            [
+                (compiled_graph, collector, set_a),
+                (compiled_graph, collector, set_b),
+            ]
+        )
         assert len(results) == 2
         assert runner.summary["total_evaluations"] == 2
         assert runner.summary["total_cases"] == 2
@@ -175,8 +181,8 @@ class TestPresetsAndRunner:
 # 5. Auto-reporter — JSON + HTML
 # ═══════════════════════════════════════════════════════════════════════
 
-class TestAutoReporter:
 
+class TestAutoReporter:
     @pytest.mark.asyncio
     async def test_reporters_generate_files(self, compiled_graph, collector):
         """Reporter generates JSON + HTML files when enabled."""
@@ -184,9 +190,13 @@ class TestAutoReporter:
             config = EvalConfig(
                 criteria={"response_match_score": CriterionConfig.response_match(threshold=0.3)},
                 reporter=ReporterConfig(
-                    enabled=True, output_dir=tmpdir,
-                    console=False, json_report=True, html=True,
-                    junit_xml=True, timestamp_files=False,
+                    enabled=True,
+                    output_dir=tmpdir,
+                    console=False,
+                    json_report=True,
+                    html=True,
+                    junit_xml=True,
+                    timestamp_files=False,
                 ),
             )
             evaluator = AgentEvaluator(compiled_graph, collector, config=config)

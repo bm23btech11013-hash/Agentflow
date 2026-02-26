@@ -474,15 +474,11 @@ class InvokeNodeHandler(BaseLoggingMixin):
             event.data["state"] = result["state"].model_dump()
             event.event_type = EventType.END
             event.metadata["status"] = "Agent execution completed"
-            event.data["messages"] = (
-                [m.model_dump() for m in messages] if messages else []
-            )
+            event.data["messages"] = [m.model_dump() for m in messages] if messages else []
             event.data["next_node"] = result.get("next_node")
             if messages:
                 last = messages[-1]
-                event.content = (
-                    last.text() if isinstance(last.content, list) else last.content
-                )
+                event.content = last.text() if isinstance(last.content, list) else last.content
                 if isinstance(last.content, list):
                     event.content_blocks = last.content
             publish_event(event)
@@ -498,9 +494,7 @@ class InvokeNodeHandler(BaseLoggingMixin):
             recovery_result = await callback_mgr.execute_on_error(context, input_data, e)
 
             if recovery_result is not None:
-                logger.info(
-                    "Node '%s' recovered from error using callback result", self.name
-                )
+                logger.info("Node '%s' recovered from error using callback result", self.name)
                 event.event_type = EventType.END
                 event.metadata["status"] = "Agent execution recovered from error"
                 event.data["message"] = recovery_result.model_dump()

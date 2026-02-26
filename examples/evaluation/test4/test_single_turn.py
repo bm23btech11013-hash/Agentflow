@@ -9,13 +9,18 @@ test4 — QuickEval, EvalSetBuilder & Reporter tests (compact).
   5. Reporters (JSON + HTML)
 
 Run:
-    pytest agentflow/evaluation/evaluation_tests/test4/ -v -s
+    pytest examples/evaluation/test4/ -v -s
 """
 
 import tempfile
 from pathlib import Path
 
 import pytest
+
+pytest.skip(
+    "Disabled in examples/evaluation so root pytest runs are unaffected.",
+    allow_module_level=True,
+)
 
 from agentflow.evaluation import (
     AgentEvaluator,
@@ -38,8 +43,8 @@ from .samples import BATCH_EVAL_SET
 # 1. QuickEval.check()
 # ═══════════════════════════════════════════════════════════════════════
 
-class TestQuickEvalCheck:
 
+class TestQuickEvalCheck:
     @pytest.mark.asyncio
     async def test_check(self, compiled_graph, collector):
         """QuickEval.check() with expected tool and response."""
@@ -60,8 +65,8 @@ class TestQuickEvalCheck:
 # 2. QuickEval.batch() + tool_usage()
 # ═══════════════════════════════════════════════════════════════════════
 
-class TestQuickEvalBatchAndTools:
 
+class TestQuickEvalBatchAndTools:
     @pytest.mark.asyncio
     async def test_batch_and_tool_usage(self, compiled_graph, collector):
         """batch() runs multiple pairs; tool_usage() verifies strict matching."""
@@ -100,8 +105,8 @@ class TestQuickEvalBatchAndTools:
 # 3. QuickEval.conversation_flow()
 # ═══════════════════════════════════════════════════════════════════════
 
-class TestQuickEvalConversation:
 
+class TestQuickEvalConversation:
     @pytest.mark.asyncio
     async def test_conversation_flow(self, compiled_graph, collector):
         """Multi-turn conversation evaluation via QuickEval."""
@@ -123,8 +128,8 @@ class TestQuickEvalConversation:
 # 4. EvalSetBuilder + from_builder + presets
 # ═══════════════════════════════════════════════════════════════════════
 
-class TestBuilderAndPresets:
 
+class TestBuilderAndPresets:
     @pytest.mark.asyncio
     async def test_builder_preset_and_from_builder(self, compiled_graph, collector):
         """Build EvalSet, run with preset, then use from_builder shorthand."""
@@ -174,8 +179,8 @@ class TestBuilderAndPresets:
 # 5. Reporters (JSON + HTML)
 # ═══════════════════════════════════════════════════════════════════════
 
-class TestReporters:
 
+class TestReporters:
     @pytest.mark.asyncio
     async def test_json_and_html_reporter(self, compiled_graph, collector):
         """Reporter generates both JSON and HTML output files."""
@@ -183,9 +188,13 @@ class TestReporters:
             config = EvalConfig(
                 criteria={"response_match_score": CriterionConfig.response_match(threshold=0.3)},
                 reporter=ReporterConfig(
-                    enabled=True, output_dir=tmpdir,
-                    console=False, json_report=True, html=True,
-                    junit_xml=False, timestamp_files=False,
+                    enabled=True,
+                    output_dir=tmpdir,
+                    console=False,
+                    json_report=True,
+                    html=True,
+                    junit_xml=False,
+                    timestamp_files=False,
                 ),
             )
             evaluator = AgentEvaluator(compiled_graph, collector, config=config)

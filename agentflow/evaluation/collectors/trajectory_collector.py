@@ -26,7 +26,8 @@ Example:
 
 import logging
 import time
-from dataclasses import dataclass, field as datafield
+from dataclasses import dataclass
+from dataclasses import field as datafield
 from typing import Any
 
 from agentflow.evaluation.dataset.eval_set import StepType, ToolCall, TrajectoryStep
@@ -38,6 +39,7 @@ from agentflow.utils.callbacks import (
     CallbackManager,
     InvocationType,
 )
+
 
 logger = logging.getLogger("agentflow.evaluation.collectors")
 
@@ -112,9 +114,7 @@ class PublisherCallback(AfterInvokeCallback):
         self._publisher = publisher
         self._config = config or {}
 
-    async def __call__(
-        self, context: CallbackContext, input_data: Any, output_data: Any
-    ) -> Any:
+    async def __call__(self, context: CallbackContext, input_data: Any, output_data: Any) -> Any:
         """Handle a post-invocation callback from the graph executor.
 
         For AI nodes, pre-extracts the LLM Message from output_data before
@@ -158,10 +158,11 @@ class PublisherCallback(AfterInvokeCallback):
         """
         try:
             from agentflow.adapters.llm.model_response_converter import ModelResponseConverter
+
             if isinstance(output_data, ModelResponseConverter):
                 return await output_data.invoke()
         except Exception:
-            pass
+            logger.debug("ModelResponseConverter extraction failed", exc_info=True)
 
         # Agent-node pathway: _call_agent_node() returns a dict with
         # {"state": ..., "messages": [Message], "next_node": ...}
@@ -172,7 +173,7 @@ class PublisherCallback(AfterInvokeCallback):
                 if messages and len(messages) > 0:
                     return messages[-1]
         except Exception:
-            pass
+            logger.debug("Agent-node message extraction failed", exc_info=True)
 
         return None
 
@@ -218,9 +219,7 @@ class PublisherCallback(AfterInvokeCallback):
         if context.invocation_type == InvocationType.AI:
             # Extract inputs from state (available before node ran)
             state = (
-                input_data.get("state", input_data)
-                if isinstance(input_data, dict)
-                else input_data
+                input_data.get("state", input_data) if isinstance(input_data, dict) else input_data
             )
             input_messages: list[dict] = []
             if hasattr(state, "context") and state.context:
@@ -390,7 +389,9 @@ class TrajectoryCollector(BasePublisher):
             TrajectoryStep.node(
                 name=node_name,
                 timestamp=event.timestamp,
-                event_type=event.event_type.value if hasattr(event.event_type, "value") else str(event.event_type),
+                event_type=event.event_type.value
+                if hasattr(event.event_type, "value")
+                else str(event.event_type),
             )
         )
         response_text = event.data.get("response_text", "")
@@ -420,7 +421,8 @@ class TrajectoryCollector(BasePublisher):
         """
         function_name = event.data.get("function_name", event.node_name or "")
         args = {
-            k: v for k, v in (event.data.get("args", {})).items()
+            k: v
+            for k, v in (event.data.get("args", {})).items()
             if k not in ("tool_call_id", "state")
         }
         tool_call_id = event.data.get("tool_call_id", "")
@@ -600,7 +602,7 @@ class EventCollector:
         ec = EventCollector()
         # pass ec.on_event as a callback, then inspect:
         node_events = ec.filter_by_event(Event.NODE_EXECUTION)
-        end_events  = ec.filter_by_event_type(EventType.END)
+        end_events = ec.filter_by_event_type(EventType.END)
         ```
     """
 

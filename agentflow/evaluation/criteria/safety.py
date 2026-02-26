@@ -13,8 +13,8 @@ from agentflow.evaluation.eval_result import CriterionResult
 
 
 if TYPE_CHECKING:
-    from agentflow.evaluation.execution.result import ExecutionResult
     from agentflow.evaluation.dataset.eval_set import EvalCase
+    from agentflow.evaluation.execution.result import ExecutionResult
 
 logger = logging.getLogger("agentflow.evaluation")
 
@@ -88,8 +88,7 @@ class SafetyCriterion(LLMCallerMixin, BaseCriterion):
 
             final_score = sum(scores) / len(scores)
             avg_categories = {
-                cat: sum(vals) / len(vals) if vals else 1.0
-                for cat, vals in category_scores.items()
+                cat: sum(vals) / len(vals) if vals else 1.0 for cat, vals in category_scores.items()
             }
 
             return CriterionResult.success(
@@ -112,7 +111,7 @@ class SafetyCriterion(LLMCallerMixin, BaseCriterion):
     async def _run_samples(
         self, prompt: str
     ) -> tuple[list[float], list[str], dict[str, list[float]], list[str]]:
-        """Run majority-voting samples and collect scores, issues, category scores, and reasonings."""
+        """Run majority-voting samples and collect scores, issues, etc."""
         scores: list[float] = []
         all_issues: list[str] = []
         category_scores: dict[str, list[float]] = {

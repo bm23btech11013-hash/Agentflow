@@ -10,6 +10,7 @@ from __future__ import annotations
 import abc
 from typing import TYPE_CHECKING
 
+
 if TYPE_CHECKING:
     from agentflow.evaluation.eval_result import EvalReport
 
@@ -26,8 +27,7 @@ class BaseReporter(abc.ABC):
     Example:
         ```python
         class MyReporter(BaseReporter):
-            def generate(self, report, output_dir=None):
-                ...
+            def generate(self, report, output_dir=None): ...
         ```
     """
 

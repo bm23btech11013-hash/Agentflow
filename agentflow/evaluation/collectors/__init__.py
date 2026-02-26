@@ -15,9 +15,9 @@ Example:
     compiled = graph.compile(callback_manager=mgr)
     await compiled.ainvoke(state, config)
 
-    print(collector.tool_calls)    # [ToolCall(name="get_weather", ...)]
-    print(collector.node_visits)   # ["PLANNER", "ANALYST"]
-    print(collector.duration)      # 3.42
+    print(collector.tool_calls)  # [ToolCall(name="get_weather", ...)]
+    print(collector.node_visits)  # ["PLANNER", "ANALYST"]
+    print(collector.duration)  # 3.42
     ```
 """
 
@@ -27,6 +27,7 @@ from .trajectory_collector import (
     TrajectoryCollector,
     make_trajectory_callback,
 )
+
 
 __all__ = [
     "TrajectoryCollector",

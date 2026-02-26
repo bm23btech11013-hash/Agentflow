@@ -114,7 +114,7 @@ class EvalCaseResult(BaseModel):
     turn_results: list[dict[str, Any]] = Field(default_factory=list)
 
     @classmethod
-    def success(
+    def success(  # noqa: PLR0913
         cls,
         eval_id: str,
         criterion_results: list[CriterionResult],
@@ -201,7 +201,7 @@ class EvalSummary(BaseModel):
         passed_cases: Number of cases that passed all criteria.
         failed_cases: Number of cases that failed criteria (not errored).
         error_cases: Number of cases that raised an exception during evaluation.
-        pass_rate: Fraction of cases that passed (0.0–1.0).
+        pass_rate: Fraction of cases that passed (0.0-1.0).
         avg_duration_seconds: Average time per case.
         total_duration_seconds: Total evaluation time.
         criterion_stats: Per-criterion aggregate statistics.
@@ -229,12 +229,12 @@ class EvalSummary(BaseModel):
         if not results:
             return cls()
 
-        total   = len(results)
-        passed  = sum(1 for r in results if r.passed)
+        total = len(results)
+        passed = sum(1 for r in results if r.passed)
         errored = sum(1 for r in results if r.is_error)
         # failed = cases that are not passed AND not errored
         # (errored cases are counted separately, not double-counted in failed)
-        failed  = total - passed - errored
+        failed = total - passed - errored
         total_duration = sum(r.duration_seconds for r in results)
 
         # Per-criterion stats
@@ -260,10 +260,8 @@ class EvalSummary(BaseModel):
         # Finalise per-criterion averages
         for stats in criterion_stats.values():
             scores = stats.pop("scores")
-            stats["avg_score"]  = sum(scores) / len(scores) if scores else 0.0
-            stats["pass_rate"]  = (
-                stats["passed"] / stats["total"] if stats["total"] > 0 else 0.0
-            )
+            stats["avg_score"] = sum(scores) / len(scores) if scores else 0.0
+            stats["pass_rate"] = stats["passed"] / stats["total"] if stats["total"] > 0 else 0.0
 
         return cls(
             total_cases=total,

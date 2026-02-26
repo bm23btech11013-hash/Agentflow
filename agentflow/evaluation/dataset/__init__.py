@@ -6,7 +6,10 @@ Provides data models and builders for defining evaluation test cases.
 Example:
     ```python
     from agentflow.evaluation.dataset import (
-        EvalSet, EvalCase, EvalSetBuilder, ToolCall,
+        EvalSet,
+        EvalCase,
+        EvalSetBuilder,
+        ToolCall,
     )
 
     # Quick build from tuples

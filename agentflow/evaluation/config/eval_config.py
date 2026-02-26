@@ -14,6 +14,7 @@ from enum import Enum
 
 from pydantic import BaseModel, Field
 
+
 # Default judge model used across all LLM-based evaluation criteria.
 # Users can override per-criterion or per-preset by passing judge_model="gpt-4o" etc.
 DEFAULT_JUDGE_MODEL = "gemini-2.5-flash"

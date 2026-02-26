@@ -80,6 +80,7 @@ def eval_test(
         @functools.wraps(func)
         async def wrapper(*args, **kwargs):
             import pytest
+
             from agentflow.evaluation import AgentEvaluator
             from agentflow.evaluation.config.eval_config import EvalConfig
 
@@ -90,7 +91,8 @@ def eval_test(
                 pytest.skip("No graph returned from test function")
                 return
 
-            if isinstance(result, tuple) and len(result) == 2:
+            _expected_tuple_len = 2
+            if isinstance(result, tuple) and len(result) == _expected_tuple_len:
                 graph, collector = result
             else:
                 pytest.fail(
@@ -212,6 +214,7 @@ def parametrize_eval_cases(eval_file: str) -> Callable:
         ```
     """
     import pytest
+
     from agentflow.evaluation.dataset.eval_set import EvalSet
 
     eval_set = EvalSet.from_file(eval_file)
@@ -263,7 +266,9 @@ class EvalFixtures:
             collector: Any,
             config: EvalConfig | None = None,
         ) -> AgentEvaluator:
-            return AgentEvaluator(graph, collector, config=config or default or EvalConfig.default())
+            return AgentEvaluator(
+                graph, collector, config=config or default or EvalConfig.default()
+            )
 
         return factory
 
@@ -280,11 +285,9 @@ class EvalPlugin:
 
     def pytest_configure(self, config):
         """Configure pytest with evaluation plugin."""
-        pass
 
     def pytest_collection_modifyitems(self, config, items):
         """Modify collected test items."""
-        pass
 
 
 # Fixture-style helpers that can be used directly
@@ -352,9 +355,10 @@ def create_eval_app(
         # conftest.py
         from agentflow.evaluation.testing import create_eval_app
 
+
         @pytest.fixture(scope="session")
         def trajectory_app():
-            graph = build_my_graph()   # <-- only thing the user writes
+            graph = build_my_graph()  # <-- only thing the user writes
             return create_eval_app(graph)
         ```
     """

@@ -13,8 +13,9 @@ This module defines the core data structures for agent evaluation:
 from __future__ import annotations
 
 import uuid
+from collections.abc import Iterator
 from enum import Enum
-from typing import Any, Iterator
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -48,9 +49,7 @@ class ToolCall(BaseModel):
         # defined.  If other.args is empty it means "any args are acceptable".
         if check_args and other.args and self.args != other.args:
             return False
-        if check_call_id and self.call_id != other.call_id:
-            return False
-        return True
+        return not (check_call_id and self.call_id != other.call_id)
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, ToolCall):
@@ -280,10 +279,7 @@ class EvalSet(BaseModel):
         return None
 
     def filter_by_tags(self, tags: list[str]) -> list[EvalCase]:
-        return [
-            case for case in self.eval_cases
-            if all(tag in case.tags for tag in tags)
-        ]
+        return [case for case in self.eval_cases if all(tag in case.tags for tag in tags)]
 
     @classmethod
     def from_file(cls, path: str) -> EvalSet:

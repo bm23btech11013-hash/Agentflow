@@ -2,7 +2,7 @@
 
 import pytest
 
-from agentflow.evaluation.evaluation_tests.test_graph import create_app_and_collector
+from ..test_graph import create_app_and_collector
 
 
 @pytest.fixture(scope="session")

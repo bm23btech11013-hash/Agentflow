@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
 
+
 if TYPE_CHECKING:
     from agentflow.evaluation.config.eval_config import UserSimulatorConfig
     from agentflow.evaluation.criteria.base import BaseCriterion
@@ -136,7 +137,10 @@ class UserSimulator:
     Example:
         ```python
         from agentflow.evaluation import (
-            UserSimulator, ConversationScenario, SimulationGoalsCriterion, CriterionConfig
+            UserSimulator,
+            ConversationScenario,
+            SimulationGoalsCriterion,
+            CriterionConfig,
         )
 
         judge = SimulationGoalsCriterion(config=CriterionConfig(threshold=0.7))
@@ -227,8 +231,7 @@ class UserSimulator:
 
                 # Build full conversation history for the graph (not just current message)
                 all_messages = [
-                    Message.text_message(msg["content"], role=msg["role"])
-                    for msg in conversation
+                    Message.text_message(msg["content"], role=msg["role"]) for msg in conversation
                 ]
                 input_data = {"messages": all_messages}
 
@@ -369,9 +372,7 @@ class UserSimulator:
         remaining = [g for g in all_goals if g not in achieved]
         newly_achieved = []
 
-        conv_text = "\n".join(
-            f"{m['role'].upper()}: {m['content']}" for m in conversation
-        )
+        conv_text = "\n".join(f"{m['role'].upper()}: {m['content']}" for m in conversation)
 
         for goal in remaining:
             prompt = GOAL_CHECK_PROMPT.format(conversation=conv_text, goal=goal)
@@ -381,13 +382,15 @@ class UserSimulator:
                 clean = raw.strip()
                 if clean.startswith("```"):
                     lines = clean.splitlines()
-                    clean = "\n".join(lines[1:-1]) if len(lines) > 2 else clean
+                    _min_fenced_lines = 2
+                    clean = "\n".join(lines[1:-1]) if len(lines) > _min_fenced_lines else clean
                 data = json.loads(clean)
                 if data.get("achieved"):
                     newly_achieved.append(goal)
             except Exception:
                 # Fallback to keyword matching if LLM call or JSON parse fails
-                words = [w for w in goal.lower().split() if len(w) > 3]
+                _min_word_len = 3
+                words = [w for w in goal.lower().split() if len(w) > _min_word_len]
                 text = " ".join(m["content"].lower() for m in conversation)
                 if words and all(w in text for w in words):
                     newly_achieved.append(goal)
@@ -444,7 +447,9 @@ class UserSimulator:
                     expected_final_response=MessageContent(
                         role="assistant",
                         content=goals_text,
-                    ) if goals_text else None,
+                    )
+                    if goals_text
+                    else None,
                 )
             ],
         )

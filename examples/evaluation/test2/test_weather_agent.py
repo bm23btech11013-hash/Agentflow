@@ -5,10 +5,15 @@ Verifies every criterion type works. Non-LLM criteria are batched into
 one test, LLM criteria into another, to minimize agent invocations.
 
 Run:
-    pytest agentflow/evaluation/evaluation_tests/test2/ -v -s
+    pytest examples/evaluation/test2/ -v -s
 """
 
 import pytest
+
+pytest.skip(
+    "Disabled in examples/evaluation so root pytest runs are unaffected.",
+    allow_module_level=True,
+)
 
 from agentflow.evaluation import (
     AgentEvaluator,
@@ -30,8 +35,8 @@ from .samples import (
 #    + keywords + node order) — single agent call
 # ═══════════════════════════════════════════════════════════════════════
 
-class TestNonLLMCriteria:
 
+class TestNonLLMCriteria:
     @pytest.mark.asyncio
     async def test_all_non_llm_criteria(self, compiled_graph, collector):
         """tool_name_match + trajectory + rouge + keywords on one weather case."""
@@ -39,7 +44,8 @@ class TestNonLLMCriteria:
             criteria={
                 "tool_name_match_score": CriterionConfig.tool_name_match(threshold=1.0),
                 "tool_trajectory_avg_score": CriterionConfig.trajectory(
-                    threshold=1.0, match_type=MatchType.EXACT,
+                    threshold=1.0,
+                    match_type=MatchType.EXACT,
                 ),
                 "rouge_match": CriterionConfig.rouge_match(threshold=0.4),
                 "contains_keywords": CriterionConfig.contains_keywords(
@@ -74,7 +80,8 @@ class TestNonLLMCriteria:
         config = EvalConfig(
             criteria={
                 "node_order_score": CriterionConfig.node_order(
-                    threshold=1.0, match_type=MatchType.EXACT,
+                    threshold=1.0,
+                    match_type=MatchType.EXACT,
                 ),
             },
             reporter={"enabled": True},
@@ -88,21 +95,27 @@ class TestNonLLMCriteria:
 # 2. All LLM criteria in one pass — single agent call, all judges run
 # ═══════════════════════════════════════════════════════════════════════
 
-class TestLLMCriteria:
 
+class TestLLMCriteria:
     @pytest.mark.asyncio
     async def test_all_llm_criteria(self, compiled_graph, collector):
         """LLM judge + factual accuracy + hallucination + safety + rubric."""
         config = EvalConfig(
             criteria={
                 "llm_judge": CriterionConfig.llm_judge(threshold=0.6, num_samples=1),
-                "factual_accuracy_v1": CriterionConfig.factual_accuracy(threshold=0.6, num_samples=1),
+                "factual_accuracy_v1": CriterionConfig.factual_accuracy(
+                    threshold=0.6, num_samples=1
+                ),
                 "hallucinations_v1": CriterionConfig.hallucination(threshold=0.6, num_samples=1),
                 "safety_v1": CriterionConfig.safety(threshold=0.6, num_samples=1),
                 "rubric_based": CriterionConfig.rubric_based(
                     rubrics=[
-                        Rubric.create("accuracy", "Does the response contain factually correct information?"),
-                        Rubric.create("relevance", "Is the response directly relevant to the user query?"),
+                        Rubric.create(
+                            "accuracy", "Does the response contain factually correct information?"
+                        ),
+                        Rubric.create(
+                            "relevance", "Is the response directly relevant to the user query?"
+                        ),
                     ],
                     threshold=0.3,
                 ),
@@ -120,8 +133,8 @@ class TestLLMCriteria:
 # 3. Full combined pipeline — all criteria types together
 # ═══════════════════════════════════════════════════════════════════════
 
-class TestCombinedPipeline:
 
+class TestCombinedPipeline:
     @pytest.mark.asyncio
     async def test_full_pipeline(self, compiled_graph, collector):
         """All non-LLM + LLM criteria in one evaluation pass."""
@@ -129,7 +142,8 @@ class TestCombinedPipeline:
             criteria={
                 "tool_name_match_score": CriterionConfig.tool_name_match(threshold=1.0),
                 "tool_trajectory_avg_score": CriterionConfig.trajectory(
-                    threshold=1.0, match_type=MatchType.IN_ORDER,
+                    threshold=1.0,
+                    match_type=MatchType.IN_ORDER,
                 ),
                 "rouge_match": CriterionConfig.rouge_match(threshold=0.4),
                 "llm_judge": CriterionConfig.llm_judge(threshold=0.6, num_samples=1),

@@ -11,6 +11,7 @@ Five cases covering:
 
 from agentflow.evaluation.dataset import EvalCase, ToolCall
 
+
 # ── 1. Happy-path: current weather ──────────────────────────────────
 WEATHER_NYC = EvalCase.single_turn(
     eval_id="st_weather_nyc",
@@ -68,6 +69,7 @@ ALL_CASES = TOOL_CASES + NO_TOOL_CASES
 
 # ── Batch eval set (used by reporters & builder tests) ──────────────
 from agentflow.evaluation.dataset.eval_set import EvalSet
+
 
 BATCH_EVAL_SET = EvalSet(
     eval_set_id="batch_eval_set",

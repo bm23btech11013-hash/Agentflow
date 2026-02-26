@@ -10,13 +10,14 @@ import html
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from agentflow.evaluation.reporters.base import BaseReporter
 from agentflow.evaluation.reporters._utils import (
     case_display_name,
     case_status_info,
     format_timestamp,
     format_tool_calls,
 )
+from agentflow.evaluation.reporters.base import BaseReporter
+
 
 if TYPE_CHECKING:
     from agentflow.evaluation.eval_result import EvalCaseResult, EvalReport
@@ -546,7 +547,7 @@ class HTMLReporter(BaseReporter):
             case_items="\n".join(case_items),
         )
 
-    def _render_case(self, result: EvalCaseResult) -> str:
+    def _render_case(self, result: EvalCaseResult) -> str:  # noqa: PLR0912, PLR0915
         """Render a single case item with rich execution data."""
         status, icon = case_status_info(result)
         name = html.escape(case_display_name(result))
@@ -583,9 +584,7 @@ class HTMLReporter(BaseReporter):
                     f"<summary>Tool Calls ({len(tools)})</summary>"
                     '<table class="tool-table"><thead><tr>'
                     "<th>Tool</th><th>Call ID</th><th>Arguments</th><th>Result</th>"
-                    "</tr></thead><tbody>"
-                    + "\n".join(rows)
-                    + "</tbody></table></details>"
+                    "</tr></thead><tbody>" + "\n".join(rows) + "</tbody></table></details>"
                 )
 
         # --- Trajectory timeline (full step details) ---
@@ -595,16 +594,22 @@ class HTMLReporter(BaseReporter):
             for step in result.actual_trajectory:
                 if isinstance(step, dict):
                     stype = step.get("step_type", step.get("type", "node")).lower()
-                    sname = html.escape(str(step.get("name", step.get("node", step.get("tool", "")))))
+                    sname = html.escape(
+                        str(step.get("name", step.get("node", step.get("tool", ""))))
+                    )
                     sargs = step.get("args", {})
                     smeta = step.get("metadata", {})
                     stimestamp = step.get("timestamp")
-                elif hasattr(step, 'step_type'):
-                    stype = step.step_type.value if hasattr(step.step_type, 'value') else str(step.step_type)
+                elif hasattr(step, "step_type"):
+                    stype = (
+                        step.step_type.value
+                        if hasattr(step.step_type, "value")
+                        else str(step.step_type)
+                    )
                     sname = html.escape(str(step.name))
-                    sargs = step.args if hasattr(step, 'args') else {}
-                    smeta = step.metadata if hasattr(step, 'metadata') else {}
-                    stimestamp = step.timestamp if hasattr(step, 'timestamp') else None
+                    sargs = step.args if hasattr(step, "args") else {}
+                    smeta = step.metadata if hasattr(step, "metadata") else {}
+                    stimestamp = step.timestamp if hasattr(step, "timestamp") else None
                 else:
                     stype = "node"
                     sname = html.escape(str(step))
@@ -615,15 +620,27 @@ class HTMLReporter(BaseReporter):
                 detail_parts = [f'<span class="traj-detail">{sname}</span>']
                 if sargs:
                     import json as _json
+
                     try:
                         args_str = _json.dumps(sargs, default=str, ensure_ascii=False)
                     except (TypeError, ValueError):
                         args_str = str(sargs)
-                    detail_parts.append(f'<span class="traj-detail" style="color:var(--color-muted);font-size:0.75rem;"> args: {html.escape(args_str)}</span>')
+                    _muted = "color:var(--color-muted);font-size:0.75rem;"
+                    detail_parts.append(
+                        f'<span class="traj-detail" style="{_muted}">'
+                        f" args: {html.escape(args_str)}</span>"
+                    )
                 if smeta:
-                    detail_parts.append(f'<span class="traj-detail" style="color:var(--color-muted);font-size:0.75rem;"> meta: {html.escape(str(smeta))}</span>')
+                    _muted = "color:var(--color-muted);font-size:0.75rem;"
+                    detail_parts.append(
+                        f'<span class="traj-detail" style="{_muted}">'
+                        f" meta: {html.escape(str(smeta))}</span>"
+                    )
                 if stimestamp:
-                    detail_parts.append(f'<span class="traj-detail" style="color:var(--color-muted);font-size:0.75rem;"> @{stimestamp}</span>')
+                    _muted = "color:var(--color-muted);font-size:0.75rem;"
+                    detail_parts.append(
+                        f'<span class="traj-detail" style="{_muted}">' f" @{stimestamp}</span>"
+                    )
                 steps.append(
                     f'<div class="traj-step {css_cls}">'
                     f'<span class="traj-label">[{stype.upper()}]</span>'
@@ -634,9 +651,7 @@ class HTMLReporter(BaseReporter):
                 trajectory_section = (
                     '                    <details class="detail-section">'
                     f"<summary>Execution Trajectory ({len(steps)} steps)</summary>"
-                    '<div class="trajectory-timeline">'
-                    + "\n".join(steps)
-                    + "</div></details>"
+                    '<div class="trajectory-timeline">' + "\n".join(steps) + "</div></details>"
                 )
 
         # --- Node responses (full fields, correct key: response_text) ---
@@ -660,13 +675,36 @@ class HTMLReporter(BaseReporter):
                     nr_has_tools = False
                     nr_timestamp = 0
                     nr_input_msgs = []
-                final_badge = ' <span style="color:var(--color-pass);font-weight:600;">[FINAL]</span>' if nr_final else ""
-                tools_info = f'<br/><span style="color:var(--color-muted);font-size:0.75rem;">tools: {html.escape(", ".join(nr_tools))}</span>' if nr_tools else ""
-                tool_calls_flag = f'<br/><span style="color:var(--color-muted);font-size:0.75rem;">has_tool_calls: True</span>' if nr_has_tools else ""
-                ts_info = f'<br/><span style="color:var(--color-muted);font-size:0.75rem;">timestamp: {nr_timestamp}</span>' if nr_timestamp else ""
+                final_badge = (
+                    ' <span style="color:var(--color-pass);font-weight:600;">[FINAL]</span>'
+                    if nr_final
+                    else ""
+                )
+                _ms = "color:var(--color-muted);font-size:0.75rem;"
+                tools_info = (
+                    f'<br/><span style="{_ms}">'
+                    f'tools: {html.escape(", ".join(nr_tools))}'
+                    '</span>'
+                    if nr_tools
+                    else ""
+                )
+                tool_calls_flag = (
+                    f'<br/><span style="{_ms}">' "has_tool_calls: True</span>"
+                    if nr_has_tools
+                    else ""
+                )
+                ts_info = (
+                    f'<br/><span style="{_ms}">' f"timestamp: {nr_timestamp}</span>"
+                    if nr_timestamp
+                    else ""
+                )
                 input_info = ""
                 if nr_input_msgs:
-                    input_info = f'<br/><span style="color:var(--color-muted);font-size:0.75rem;">input_messages: {len(nr_input_msgs)} messages</span>'
+                    input_info = (
+                        f'<br/><span style="{_ms}">'
+                        f"input_messages: {len(nr_input_msgs)} messages"
+                        "</span>"
+                    )
                 boxes.append(
                     f'<div class="node-box">'
                     f'<span class="node-box-title">{nname}{final_badge}</span>'
@@ -689,9 +727,7 @@ class HTMLReporter(BaseReporter):
                 cr_icon = "✓" if cr.passed else "✗"
                 reason_html = ""
                 if getattr(cr, "reason", None):
-                    reason_html = (
-                        f'<div class="criterion-reason">{html.escape(cr.reason)}</div>'
-                    )
+                    reason_html = f'<div class="criterion-reason">{html.escape(cr.reason)}</div>'
                 # Render ALL details as a key-value list
                 details_html = ""
                 if cr.details:
@@ -702,7 +738,7 @@ class HTMLReporter(BaseReporter):
                         dv_str = html.escape(str(dv))
                         detail_items.append(
                             f'<span style="color:var(--color-muted);font-size:0.75rem;">'
-                            f'<strong>{html.escape(dk)}</strong>: {dv_str}</span>'
+                            f"<strong>{html.escape(dk)}</strong>: {dv_str}</span>"
                         )
                     if detail_items:
                         details_html = (
@@ -714,7 +750,7 @@ class HTMLReporter(BaseReporter):
                 if cr.error:
                     error_html = (
                         f'<div class="criterion-reason" style="color:#991b1b;">'
-                        f'Error: {html.escape(cr.error)}</div>'
+                        f"Error: {html.escape(cr.error)}</div>"
                     )
                 criteria_items.append(
                     f'                        <div class="criterion-item">'
@@ -738,15 +774,13 @@ class HTMLReporter(BaseReporter):
             for mk, mv in result.metadata.items():
                 meta_items.append(
                     f'<span style="color:var(--color-muted);font-size:0.8rem;">'
-                    f'<strong>{html.escape(str(mk))}</strong>: {html.escape(str(mv))}</span>'
+                    f"<strong>{html.escape(str(mk))}</strong>: {html.escape(str(mv))}</span>"
                 )
             if meta_items:
                 metadata_section = (
                     '                    <details class="detail-section">'
                     "<summary>Metadata</summary>"
-                    '<div style="padding:0.5rem;">'
-                    + "<br/>".join(meta_items)
-                    + "</div></details>"
+                    '<div style="padding:0.5rem;">' + "<br/>".join(meta_items) + "</div></details>"
                 )
 
         # --- Node visits ---
@@ -756,7 +790,8 @@ class HTMLReporter(BaseReporter):
             node_visits_section = (
                 '                    <details class="detail-section">'
                 f"<summary>Node Visits ({len(result.node_visits)})</summary>"
-                f'<div style="padding:0.5rem;font-family:monospace;font-size:0.8rem;">{nv_html}</div>'
+                '<div style="padding:0.5rem;font-family:monospace;'
+                f'font-size:0.8rem;">{nv_html}</div>'
                 "</details>"
             )
 
@@ -767,19 +802,24 @@ class HTMLReporter(BaseReporter):
             for msg in result.messages:
                 role = msg.get("role", "?") if isinstance(msg, dict) else "?"
                 content = msg.get("content", "") if isinstance(msg, dict) else str(msg)
-                role_color = "#6366f1" if role == "user" else "#22c55e" if role == "assistant" else "var(--color-muted)"
+                role_color = (
+                    "#6366f1"
+                    if role == "user"
+                    else "#22c55e"
+                    if role == "assistant"
+                    else "var(--color-muted)"
+                )
                 msg_items.append(
                     f'<div style="padding:0.25rem 0;font-size:0.8rem;">'
-                    f'<span style="color:{role_color};font-weight:600;">[{html.escape(role)}]</span> '
-                    f'{html.escape(content)}</div>'
+                    f'<span style="color:{role_color};font-weight:600;">'
+                    f"[{html.escape(role)}]</span> "
+                    f"{html.escape(content)}</div>"
                 )
             if msg_items:
                 messages_section = (
                     '                    <details class="detail-section">'
                     f"<summary>Messages ({len(result.messages)})</summary>"
-                    '<div style="padding:0.5rem;">'
-                    + "\n".join(msg_items)
-                    + "</div></details>"
+                    '<div style="padding:0.5rem;">' + "\n".join(msg_items) + "</div></details>"
                 )
 
         # --- Turn results (multi-turn per-turn data) ---
@@ -792,15 +832,26 @@ class HTMLReporter(BaseReporter):
                 agent_resp = html.escape(str(tr.get("agent_response", "")))
                 turn_tcs = tr.get("tool_calls", [])
                 turn_nv = tr.get("node_visits", [])
-                tc_info = f'<br/><span style="color:var(--color-muted);font-size:0.75rem;">tool_calls: {len(turn_tcs)}</span>' if turn_tcs else ""
-                nv_info = f'<br/><span style="color:var(--color-muted);font-size:0.75rem;">nodes: {html.escape(" → ".join(turn_nv))}</span>' if turn_nv else ""
+                _ts = "color:var(--color-muted);font-size:0.75rem;"
+                tc_info = (
+                    f'<br/><span style="{_ts}">' f"tool_calls: {len(turn_tcs)}</span>"
+                    if turn_tcs
+                    else ""
+                )
+                nv_info = (
+                    f'<br/><span style="{_ts}">'
+                    f'nodes: {html.escape(" → ".join(turn_nv))}'
+                    '</span>'
+                    if turn_nv
+                    else ""
+                )
                 turn_items.append(
                     f'<div class="node-box">'
                     f'<span class="node-box-title">Turn {tidx}</span>'
-                    f'<p><strong>User:</strong> {user_input}</p>'
-                    f'<p><strong>Agent:</strong> {agent_resp}</p>'
-                    f'{tc_info}{nv_info}'
-                    f'</div>'
+                    f"<p><strong>User:</strong> {user_input}</p>"
+                    f"<p><strong>Agent:</strong> {agent_resp}</p>"
+                    f"{tc_info}{nv_info}"
+                    f"</div>"
                 )
             if turn_items:
                 turn_results_section = (

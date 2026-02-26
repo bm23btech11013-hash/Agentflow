@@ -7,7 +7,7 @@ folder only needs to call ``create_app_and_collector()``.
 
 Example::
 
-    from agentflow.evaluation.evaluation_tests.test_graph import create_app_and_collector
+    from examples.evaluation.test_graph import create_app_and_collector
 
     app, collector = create_app_and_collector()
 """
@@ -15,6 +15,7 @@ Example::
 from __future__ import annotations
 
 from dotenv import load_dotenv
+
 
 load_dotenv()
 

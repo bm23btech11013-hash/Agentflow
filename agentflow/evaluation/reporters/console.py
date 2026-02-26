@@ -9,12 +9,12 @@ from __future__ import annotations
 import sys
 from typing import TYPE_CHECKING, TextIO
 
-from agentflow.evaluation.reporters.base import BaseReporter
 from agentflow.evaluation.reporters._utils import (
     case_display_name,
     format_timestamp,
     format_tool_calls,
 )
+from agentflow.evaluation.reporters.base import BaseReporter
 
 
 if TYPE_CHECKING:
@@ -26,17 +26,17 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 
 _ANSI = {
-    "RESET":    "\033[0m",
-    "BOLD":     "\033[1m",
-    "DIM":      "\033[2m",
-    "RED":      "\033[31m",
-    "GREEN":    "\033[32m",
-    "YELLOW":   "\033[33m",
-    "BLUE":     "\033[34m",
-    "MAGENTA":  "\033[35m",
-    "CYAN":     "\033[36m",
-    "WHITE":    "\033[37m",
-    "BG_RED":   "\033[41m",
+    "RESET": "\033[0m",
+    "BOLD": "\033[1m",
+    "DIM": "\033[2m",
+    "RED": "\033[31m",
+    "GREEN": "\033[32m",
+    "YELLOW": "\033[33m",
+    "BLUE": "\033[34m",
+    "MAGENTA": "\033[35m",
+    "CYAN": "\033[36m",
+    "WHITE": "\033[37m",
+    "BG_RED": "\033[41m",
     "BG_GREEN": "\033[42m",
 }
 
@@ -51,17 +51,17 @@ class Colors:
     affects all reporter instances.
     """
 
-    RESET    = _ANSI["RESET"]
-    BOLD     = _ANSI["BOLD"]
-    DIM      = _ANSI["DIM"]
-    RED      = _ANSI["RED"]
-    GREEN    = _ANSI["GREEN"]
-    YELLOW   = _ANSI["YELLOW"]
-    BLUE     = _ANSI["BLUE"]
-    MAGENTA  = _ANSI["MAGENTA"]
-    CYAN     = _ANSI["CYAN"]
-    WHITE    = _ANSI["WHITE"]
-    BG_RED   = _ANSI["BG_RED"]
+    RESET = _ANSI["RESET"]
+    BOLD = _ANSI["BOLD"]
+    DIM = _ANSI["DIM"]
+    RED = _ANSI["RED"]
+    GREEN = _ANSI["GREEN"]
+    YELLOW = _ANSI["YELLOW"]
+    BLUE = _ANSI["BLUE"]
+    MAGENTA = _ANSI["MAGENTA"]
+    CYAN = _ANSI["CYAN"]
+    WHITE = _ANSI["WHITE"]
+    BG_RED = _ANSI["BG_RED"]
     BG_GREEN = _ANSI["BG_GREEN"]
 
     @classmethod
@@ -90,6 +90,7 @@ class _C:
 # ---------------------------------------------------------------------------
 # Reporter
 # ---------------------------------------------------------------------------
+
 
 class ConsoleReporter(BaseReporter):
     """Pretty-print evaluation results to console.
@@ -212,19 +213,16 @@ class ConsoleReporter(BaseReporter):
 
         fail_color = c.RED if summary.failed_cases > 0 else c.DIM
         self._print(
-            f"  {c.DIM}├─{c.RESET} Failed:       "
-            f"{fail_color}{summary.failed_cases}{c.RESET}"
+            f"  {c.DIM}├─{c.RESET} Failed:       " f"{fail_color}{summary.failed_cases}{c.RESET}"
         )
 
         error_color = c.YELLOW if summary.error_cases > 0 else c.DIM
         self._print(
-            f"  {c.DIM}├─{c.RESET} Errors:       "
-            f"{error_color}{summary.error_cases}{c.RESET}"
+            f"  {c.DIM}├─{c.RESET} Errors:       " f"{error_color}{summary.error_cases}{c.RESET}"
         )
 
         duration_str = (
-            f"{summary.total_duration_seconds:.2f}s "
-            f"(avg: {summary.avg_duration_seconds:.2f}s)"
+            f"{summary.total_duration_seconds:.2f}s " f"(avg: {summary.avg_duration_seconds:.2f}s)"
         )
         self._print(f"  {c.DIM}└─{c.RESET} Duration:     {duration_str}")
         self._print()
@@ -238,13 +236,13 @@ class ConsoleReporter(BaseReporter):
         self._print()
 
         HIGH_PASS_RATE = 0.9
-        MED_PASS_RATE  = 0.5
+        MED_PASS_RATE = 0.5
 
         for criterion, stats in report.summary.criterion_stats.items():
             pass_rate = stats.get("pass_rate", 0.0)
             avg_score = stats.get("avg_score", 0.0)
-            passed    = stats.get("passed", 0)
-            total     = stats.get("total", 0)
+            passed = stats.get("passed", 0)
+            total = stats.get("total", 0)
 
             if pass_rate >= HIGH_PASS_RATE:
                 color, icon = c.GREEN, "✓"
@@ -267,7 +265,7 @@ class ConsoleReporter(BaseReporter):
         for result in report.results:
             self._print_case(result)
 
-    def _print_case(self, result: EvalCaseResult) -> None:
+    def _print_case(self, result: EvalCaseResult) -> None:  # noqa: PLR0912, PLR0915
         c = self._c
         if result.is_error:
             icon, color, status = "⚠", c.YELLOW, "ERROR"
@@ -278,8 +276,7 @@ class ConsoleReporter(BaseReporter):
 
         name = case_display_name(result)
         self._print(
-            f"  {color}{icon} {status}{c.RESET} "
-            f"{name} ({result.duration_seconds:.2f}s)"
+            f"  {color}{icon} {status}{c.RESET} " f"{name} ({result.duration_seconds:.2f}s)"
         )
 
         if result.error:
@@ -293,57 +290,95 @@ class ConsoleReporter(BaseReporter):
 
         # --- Agent response (shown when flag is set) ---
         if self.include_actual_response and result.actual_response:
-            self._print(f"      {c.BOLD}Response:{c.RESET} {c.DIM}{result.actual_response}{c.RESET}")
+            self._print(
+                f"      {c.BOLD}Response:{c.RESET} {c.DIM}{result.actual_response}{c.RESET}"
+            )
 
         # --- Tool calls (always shown) ---
         if result.actual_tool_calls:
             self._print(f"      {c.BOLD}Tool Calls ({len(result.actual_tool_calls)}):{c.RESET}")
             for tc_info in format_tool_calls(result.actual_tool_calls):
                 self._print(f"        {c.CYAN}→{c.RESET} {tc_info['name']}")
-                if tc_info.get('call_id'):
+                if tc_info.get("call_id"):
                     self._print(f"          {c.DIM}call_id: {tc_info['call_id']}{c.RESET}")
-                if tc_info['args'] and tc_info['args'] != '{}':
+                if tc_info["args"] and tc_info["args"] != "{}":
                     self._print(f"          {c.DIM}args: {tc_info['args']}{c.RESET}")
-                if tc_info['result']:
+                if tc_info["result"]:
                     self._print(f"          {c.DIM}result: {tc_info['result']}{c.RESET}")
 
         # --- Trajectory (shown when flag is set) ---
         if self.include_trajectory and result.actual_trajectory:
-            self._print(f"      {c.BOLD}Trajectory ({len(result.actual_trajectory)} steps):{c.RESET}")
+            self._print(
+                f"      {c.BOLD}Trajectory ({len(result.actual_trajectory)} steps):{c.RESET}"
+            )
             for step in result.actual_trajectory:
-                if hasattr(step, 'step_type'):
-                    stype = step.step_type.value if hasattr(step.step_type, 'value') else str(step.step_type)
-                    sname = step.name if hasattr(step, 'name') else str(step)
+                if hasattr(step, "step_type"):
+                    stype = (
+                        step.step_type.value
+                        if hasattr(step.step_type, "value")
+                        else str(step.step_type)
+                    )
+                    sname = step.name if hasattr(step, "name") else str(step)
                     self._print(f"        {c.CYAN}→{c.RESET} [{stype.upper()}] {sname}")
-                    if hasattr(step, 'args') and step.args:
+                    if hasattr(step, "args") and step.args:
                         import json as _json
+
                         try:
                             args_str = _json.dumps(step.args, default=str, ensure_ascii=False)
                         except (TypeError, ValueError):
                             args_str = str(step.args)
                         self._print(f"          {c.DIM}args: {args_str}{c.RESET}")
-                    if hasattr(step, 'metadata') and step.metadata:
+                    if hasattr(step, "metadata") and step.metadata:
                         self._print(f"          {c.DIM}metadata: {step.metadata}{c.RESET}")
-                    if hasattr(step, 'timestamp') and step.timestamp:
+                    if hasattr(step, "timestamp") and step.timestamp:
                         self._print(f"          {c.DIM}timestamp: {step.timestamp}{c.RESET}")
                 else:
                     self._print(f"        {c.CYAN}→{c.RESET} {step}")
 
         # --- Node visits (always shown) ---
         if getattr(result, "node_visits", None):
-            self._print(f"      {c.BOLD}Node Visits:{c.RESET} {c.DIM}{' → '.join(result.node_visits)}{c.RESET}")
+            self._print(
+                f"      {c.BOLD}Node Visits:{c.RESET} "
+                f"{c.DIM}{' → '.join(result.node_visits)}{c.RESET}"
+            )
 
         # --- Node responses (always shown with full fields) ---
         if getattr(result, "node_responses", None):
             self._print(f"      {c.BOLD}Node Responses ({len(result.node_responses)}):{c.RESET}")
             for nr in result.node_responses:
-                nr_name = nr.get("node_name", "?") if isinstance(nr, dict) else getattr(nr, "node_name", "?")
-                nr_text = nr.get("response_text", "") if isinstance(nr, dict) else getattr(nr, "response_text", "")
-                nr_tools = nr.get("tool_call_names", []) if isinstance(nr, dict) else getattr(nr, "tool_call_names", [])
-                nr_final = nr.get("is_final", False) if isinstance(nr, dict) else getattr(nr, "is_final", False)
-                nr_has_tools = nr.get("has_tool_calls", False) if isinstance(nr, dict) else getattr(nr, "has_tool_calls", False)
-                nr_timestamp = nr.get("timestamp", 0) if isinstance(nr, dict) else getattr(nr, "timestamp", 0)
-                nr_input_msgs = nr.get("input_messages", []) if isinstance(nr, dict) else getattr(nr, "input_messages", [])
+                nr_name = (
+                    nr.get("node_name", "?")
+                    if isinstance(nr, dict)
+                    else getattr(nr, "node_name", "?")
+                )
+                nr_text = (
+                    nr.get("response_text", "")
+                    if isinstance(nr, dict)
+                    else getattr(nr, "response_text", "")
+                )
+                nr_tools = (
+                    nr.get("tool_call_names", [])
+                    if isinstance(nr, dict)
+                    else getattr(nr, "tool_call_names", [])
+                )
+                nr_final = (
+                    nr.get("is_final", False)
+                    if isinstance(nr, dict)
+                    else getattr(nr, "is_final", False)
+                )
+                nr_has_tools = (
+                    nr.get("has_tool_calls", False)
+                    if isinstance(nr, dict)
+                    else getattr(nr, "has_tool_calls", False)
+                )
+                nr_timestamp = (
+                    nr.get("timestamp", 0) if isinstance(nr, dict) else getattr(nr, "timestamp", 0)
+                )
+                nr_input_msgs = (
+                    nr.get("input_messages", [])
+                    if isinstance(nr, dict)
+                    else getattr(nr, "input_messages", [])
+                )
                 marker = " [FINAL]" if nr_final else ""
                 self._print(f"        {c.MAGENTA}⊙{c.RESET} {nr_name}{marker}")
                 if nr_text:
@@ -371,7 +406,9 @@ class ConsoleReporter(BaseReporter):
 
         # --- Turn results (multi-turn per-turn data) ---
         if getattr(result, "turn_results", None):
-            self._print(f"      {c.BOLD}Turn-by-Turn Results ({len(result.turn_results)}):{c.RESET}")
+            self._print(
+                f"      {c.BOLD}Turn-by-Turn Results ({len(result.turn_results)}):{c.RESET}"
+            )
             for tr in result.turn_results:
                 tidx = tr.get("turn_index", "?")
                 self._print(f"        {c.CYAN}Turn {tidx}:{c.RESET}")
@@ -386,7 +423,7 @@ class ConsoleReporter(BaseReporter):
 
         # --- Criteria results (always shown for ALL criteria with full details) ---
         for cr in result.criterion_results:
-            cr_icon  = "✓" if cr.passed else "✗"
+            cr_icon = "✓" if cr.passed else "✗"
             cr_color = c.GREEN if cr.passed else c.RED
             self._print(
                 f"      {cr_color}{cr_icon}{c.RESET} {cr.criterion}: "

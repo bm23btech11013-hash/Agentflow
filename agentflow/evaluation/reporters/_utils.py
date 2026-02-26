@@ -10,6 +10,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
+
 if TYPE_CHECKING:
     from agentflow.evaluation.eval_result import EvalCaseResult
 
@@ -47,20 +48,24 @@ def format_tool_calls(tool_calls: list[dict[str, Any]] | list[Any]) -> list[dict
     out: list[dict[str, str]] = []
     for tc in tool_calls:
         if isinstance(tc, dict):
-            out.append({
-                "name": str(tc.get("name", "")),
-                "args": _compact_json(tc.get("args", {})),
-                "result": str(tc.get("result", "")),
-                "call_id": str(tc.get("call_id", "") or ""),
-            })
+            out.append(
+                {
+                    "name": str(tc.get("name", "")),
+                    "args": _compact_json(tc.get("args", {})),
+                    "result": str(tc.get("result", "")),
+                    "call_id": str(tc.get("call_id", "") or ""),
+                }
+            )
         elif hasattr(tc, "model_dump"):
             d = tc.model_dump()
-            out.append({
-                "name": str(d.get("name", "")),
-                "args": _compact_json(d.get("args", {})),
-                "result": str(d.get("result", "")),
-                "call_id": str(d.get("call_id", "") or ""),
-            })
+            out.append(
+                {
+                    "name": str(d.get("name", "")),
+                    "args": _compact_json(d.get("args", {})),
+                    "result": str(d.get("result", "")),
+                    "call_id": str(d.get("call_id", "") or ""),
+                }
+            )
     return out
 
 

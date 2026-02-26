@@ -1,8 +1,8 @@
 """Preset evaluation configurations for common scenarios."""
 
 from agentflow.evaluation.config.eval_config import (
-    CriterionConfig,
     DEFAULT_JUDGE_MODEL,
+    CriterionConfig,
     EvalConfig,
     MatchType,
 )
@@ -57,13 +57,16 @@ class EvalPresets:
         """
         criteria: dict = {
             "response_match_score": CriterionConfig.response_match(
-                threshold=threshold, judge_model=judge_model,
+                threshold=threshold,
+                judge_model=judge_model,
             ),
         }
 
         if use_llm_judge:
             criteria["llm_judge"] = CriterionConfig.llm_judge(
-                threshold=threshold, num_samples=1, judge_model=judge_model,
+                threshold=threshold,
+                num_samples=1,
+                judge_model=judge_model,
             )
 
         return EvalConfig(criteria=criteria)
@@ -91,7 +94,7 @@ class EvalPresets:
 
         return EvalConfig(
             criteria={
-                "tool_name_match_score":     CriterionConfig.tool_name_match(threshold=threshold),
+                "tool_name_match_score": CriterionConfig.tool_name_match(threshold=threshold),
                 "tool_trajectory_avg_score": CriterionConfig.trajectory(
                     threshold=threshold,
                     match_type=match_type,
@@ -119,8 +122,9 @@ class EvalPresets:
         """
         return EvalConfig(
             criteria={
-                "response_match_score":      CriterionConfig.response_match(
-                    threshold=threshold, judge_model=judge_model,
+                "response_match_score": CriterionConfig.response_match(
+                    threshold=threshold,
+                    judge_model=judge_model,
                 ),
                 "tool_trajectory_avg_score": CriterionConfig.trajectory(
                     threshold=threshold,
@@ -167,13 +171,13 @@ class EvalPresets:
         """
         criteria: dict = {
             # ── No-LLM criteria ──────────────────────────────────────────
-            "tool_name_match_score":     CriterionConfig.tool_name_match(threshold=1.0),
+            "tool_name_match_score": CriterionConfig.tool_name_match(threshold=1.0),
             "tool_trajectory_avg_score": CriterionConfig.trajectory(
                 threshold=1.0,
                 match_type=MatchType.IN_ORDER,
                 check_args=True,
             ),
-            "rouge_match":               CriterionConfig.rouge_match(threshold=threshold),
+            "rouge_match": CriterionConfig.rouge_match(threshold=threshold),
             # Note: "contains_keywords" is intentionally omitted — keywords
             # are domain-specific and must be supplied by the caller:
             #   config.criteria["contains_keywords"] = CriterionConfig.contains_keywords(
@@ -182,21 +186,27 @@ class EvalPresets:
         }
 
         if use_llm_judge:
-            criteria.update({
-                # ── LLM criteria ─────────────────────────────────────────
-                "llm_judge":           CriterionConfig.llm_judge(
-                    threshold=threshold, judge_model=judge_model,
-                ),
-                "factual_accuracy_v1": CriterionConfig.factual_accuracy(
-                    threshold=threshold, judge_model=judge_model,
-                ),
-                "hallucinations_v1":   CriterionConfig.hallucination(
-                    threshold=threshold, judge_model=judge_model,
-                ),
-                "safety_v1":           CriterionConfig.safety(
-                    threshold=threshold, judge_model=judge_model,
-                ),
-            })
+            criteria.update(
+                {
+                    # ── LLM criteria ─────────────────────────────────────────
+                    "llm_judge": CriterionConfig.llm_judge(
+                        threshold=threshold,
+                        judge_model=judge_model,
+                    ),
+                    "factual_accuracy_v1": CriterionConfig.factual_accuracy(
+                        threshold=threshold,
+                        judge_model=judge_model,
+                    ),
+                    "hallucinations_v1": CriterionConfig.hallucination(
+                        threshold=threshold,
+                        judge_model=judge_model,
+                    ),
+                    "safety_v1": CriterionConfig.safety(
+                        threshold=threshold,
+                        judge_model=judge_model,
+                    ),
+                }
+            )
 
         return EvalConfig(criteria=criteria)
 
@@ -218,10 +228,12 @@ class EvalPresets:
         return EvalConfig(
             criteria={
                 "hallucinations_v1": CriterionConfig.hallucination(
-                    threshold=threshold, judge_model=judge_model,
+                    threshold=threshold,
+                    judge_model=judge_model,
                 ),
-                "safety_v1":         CriterionConfig.safety(
-                    threshold=threshold, judge_model=judge_model,
+                "safety_v1": CriterionConfig.safety(
+                    threshold=threshold,
+                    judge_model=judge_model,
                 ),
             }
         )
@@ -276,7 +288,8 @@ class EvalPresets:
 
         if response_threshold is not None:
             criteria["response_match_score"] = CriterionConfig.response_match(
-                threshold=response_threshold, judge_model=judge_model,
+                threshold=response_threshold,
+                judge_model=judge_model,
             )
 
         if tool_threshold is not None:
@@ -291,22 +304,26 @@ class EvalPresets:
 
         if llm_judge_threshold is not None:
             criteria["llm_judge"] = CriterionConfig.llm_judge(
-                threshold=llm_judge_threshold, judge_model=judge_model,
+                threshold=llm_judge_threshold,
+                judge_model=judge_model,
             )
 
         if hallucination_threshold is not None:
             criteria["hallucinations_v1"] = CriterionConfig.hallucination(
-                threshold=hallucination_threshold, judge_model=judge_model,
+                threshold=hallucination_threshold,
+                judge_model=judge_model,
             )
 
         if safety_threshold is not None:
             criteria["safety_v1"] = CriterionConfig.safety(
-                threshold=safety_threshold, judge_model=judge_model,
+                threshold=safety_threshold,
+                judge_model=judge_model,
             )
 
         if factual_accuracy_threshold is not None:
             criteria["factual_accuracy_v1"] = CriterionConfig.factual_accuracy(
-                threshold=factual_accuracy_threshold, judge_model=judge_model,
+                threshold=factual_accuracy_threshold,
+                judge_model=judge_model,
             )
 
         return EvalConfig(criteria=criteria)

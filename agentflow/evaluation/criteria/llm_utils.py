@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import logging
 
+
 logger = logging.getLogger("agentflow.evaluation")
 
 
@@ -18,7 +19,8 @@ def _parse_model_provider(model: str) -> tuple[str, str]:
 
     Supports:
       - ``"gemini-2.5-flash"``          → ``("google", "gemini-2.5-flash")``
-      - ``"gemini/gemini-2.5-flash"``    → ``("google", "gemini-2.5-flash")``  (legacy LiteLLM syntax)
+      - ``"gemini/gemini-2.5-flash"``    → ``("google", "gemini-2.5-flash")``
+        (legacy LiteLLM syntax)
       - ``"gpt-4o"``                     → ``("openai", "gpt-4o")``
       - ``"openai/gpt-4o"``              → ``("openai", "gpt-4o")``
 
@@ -131,7 +133,7 @@ class LLMCallerMixin:
 
             # Ensure model uses litellm provider prefix for Gemini
             litellm_model = model
-            if not ("/" in model) and model.lower().startswith("gemini"):
+            if "/" not in model and model.lower().startswith("gemini"):
                 litellm_model = f"gemini/{model}"
 
             response = await litellm.acompletion(

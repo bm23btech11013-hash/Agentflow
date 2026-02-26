@@ -1,8 +1,8 @@
-"""Shared fixtures for test4 — QuickEval, Builder & Reporters tests."""
+"""Shared fixtures for test2 — all-criteria single-turn tests."""
 
 import pytest
 
-from agentflow.evaluation.evaluation_tests.test_graph import create_app_and_collector
+from ..test_graph import create_app_and_collector
 
 
 @pytest.fixture(scope="session")

@@ -25,7 +25,6 @@ from .base import (
     SyncCriterion,
     WeightedCriterion,
 )
-from .simulation_goals import SimulationGoalsCriterion
 from .factual_accuracy import FactualAccuracyCriterion
 from .hallucination import HallucinationCriterion
 from .llm_judge import LLMJudgeCriterion
@@ -38,6 +37,7 @@ from .response import (
 )
 from .rubric import RubricBasedCriterion
 from .safety import SafetyCriterion
+from .simulation_goals import SimulationGoalsCriterion
 from .trajectory import NodeOrderMatchCriterion, ToolNameMatchCriterion, TrajectoryMatchCriterion
 
 
