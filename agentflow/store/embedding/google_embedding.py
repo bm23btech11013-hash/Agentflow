@@ -6,6 +6,7 @@ from .base_embedding import BaseEmbedding
 
 
 HAS_GOOGLE = False
+genai = None
 
 try:
     from google import genai
