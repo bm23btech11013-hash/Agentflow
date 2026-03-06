@@ -149,6 +149,10 @@ class Agent(BaseAgent):
                 ``effort`` applies to both providers; ``summary`` is OpenAI-only;
                 ``thinking_budget`` is Google-only and overrides ``effort``.
 
+                For Google, ``effort`` is translated to ``thinking_budget`` automatically:
+                ``"low"`` → 512, ``"medium"`` → 8192 (default), ``"high"`` → 24576.
+                So thinking is **on by default** for Google with ``thinking_budget=8192``.
+
                 Examples::
 
                     reasoning_config=None                        # OFF for both
@@ -660,12 +664,11 @@ class Agent(BaseAgent):
                 config_kwargs["tools"] = [types.Tool(function_declarations=function_declarations)]
 
         # Map reasoning_config → Google ThinkingConfig.
-        # reasoning_config=None (default) means no ThinkingConfig is sent—same
-        # opt-in behaviour as OpenAI. Reasoning is only enabled when the user
-        # explicitly passes a config.
+        # Default is {"effort": "medium"}, so Google thinking IS ON by default
+        # (thinking_budget=8192). Pass reasoning_config=None to disable thinking.
         #
         #   effort "low"    → thinking_budget 512
-        #   effort "medium" → thinking_budget 8192
+        #   effort "medium" → thinking_budget 8192  (default)
         #   effort "high"   → thinking_budget 24576
         #   thinking_budget key → passed through directly (takes precedence)
         if self.reasoning_config and self.output_type == "text":
