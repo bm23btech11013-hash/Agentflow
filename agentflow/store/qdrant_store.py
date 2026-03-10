@@ -256,6 +256,26 @@ class QdrantStore(BaseStore):
                 )
                 logger.info(f"Created collection: {collection}")
 
+                # Create payload indexes for filterable fields
+                # Required for remote/cloud Qdrant where full scan is disabled
+                from qdrant_client.http.models import PayloadSchemaType
+
+                for field_name in (
+                    "user_id",
+                    "thread_id",
+                    "memory_type",
+                    "category",
+                    "memory_key",
+                ):
+                    await self.client.create_payload_index(
+                        collection_name=collection,
+                        field_name=field_name,
+                        field_schema=PayloadSchemaType.KEYWORD,
+                    )
+                logger.info(
+                    f"Created payload indexes for collection: {collection}"
+                )
+
             self._collection_cache.add(collection)
         except Exception as e:
             logger.error(f"Error ensuring collection {collection} exists: {e}")
@@ -510,14 +530,25 @@ class QdrantStore(BaseStore):
         if metadata:
             updated_metadata.update(metadata)
 
+        # Strip system fields from metadata so they don't overwrite the
+        # explicit values we set below (existing.metadata mirrors the full
+        # Qdrant payload, including "content").
+        _system_keys = {
+            "content", "user_id", "thread_id",
+            "memory_type", "category", "timestamp",
+        }
+        extra_metadata = {
+            k: v for k, v in updated_metadata.items() if k not in _system_keys
+        }
+
         updated_payload = {
+            **extra_metadata,
             "content": text_content,
             "user_id": existing.user_id,
             "thread_id": existing.thread_id,
             "memory_type": existing.memory_type.value,
             "category": updated_metadata.get("category", "general"),
             "timestamp": datetime.now().isoformat(),
-            **updated_metadata,
         }
 
         # Create updated point

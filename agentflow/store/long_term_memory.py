@@ -1,11 +1,57 @@
 """
 Long-term memory integration for AgentFlow graphs.
 
-Provides:
-- memory_tool: an LLM-callable tool for search/store/update/delete on BaseStore
-- create_memory_preload_node: factory that returns a node injecting memory into state
-- get_memory_system_prompt: prompt fragments for each read mode
-- MemoryWriteTracker: tracks pending async writes for guaranteed completion on shutdown
+Primary API
+-----------
+    **MemoryIntegration** – single configuration point for adding long-term
+    memory to any agent graph. Users only need to specify a *store* and a
+    *retrieval_mode* (``"no_retrieval"`` | ``"preload"`` | ``"postload"``).
+
+Retrieval modes
+~~~~~~~~~~~~~~~
+    * **no_retrieval** (default): the LLM cannot read past memories but CAN
+      write new ones via ``memory_tool`` (always available as a tool).
+    * **preload**: relevant memories are retrieved from the vector store and
+      injected as a system message *before* the LLM call.
+    * **postload**: the LLM decides when to search memory by calling
+      ``memory_tool(action="search", …)`` itself.
+
+Write behaviour (all modes)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    * The LLM decides *what* to persist by calling ``memory_tool`` with
+      ``action="store"`` / ``"update"`` / ``"delete"``.
+    * Every write is executed **asynchronously in the background** so it
+      never blocks the response.
+    * ``MemoryWriteTracker`` guarantees that pending writes complete before
+      process shutdown.
+    * Write modes: ``merge`` (default) or ``replace``.
+
+Quick start
+~~~~~~~~~~~
+    .. code-block:: python
+
+        from agentflow.store import MemoryIntegration, QdrantStore, OpenAIEmbedding
+
+        store = QdrantStore(embedding=OpenAIEmbedding(), path="./memory_data")
+        memory = MemoryIntegration(store=store, retrieval_mode="preload")
+
+        # Wire into your graph (one-liner):
+        memory.wire(graph, entry_to="main")
+
+        # Include the system prompt in your LLM node:
+        system_prompt = memory.system_prompt
+
+        # Register memory tools alongside your other tools:
+        tool_node = ToolNode([my_tool, *memory.tools])
+
+        app = graph.compile(store=store)
+
+Lower-level helpers (advanced / backwards-compatible)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    * ``memory_tool`` – the LLM-callable tool for CRUD on ``BaseStore``.
+    * ``create_memory_preload_node`` – factory that returns a graph node.
+    * ``get_memory_system_prompt`` – prompt fragment per retrieval mode.
+    * ``MemoryWriteTracker`` – tracks pending async writes.
 """
 
 from __future__ import annotations
@@ -15,7 +61,7 @@ import json
 import logging
 from collections.abc import Callable
 from enum import Enum
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from injectq import Inject
 
@@ -25,6 +71,9 @@ from agentflow.store.store_schema import MemorySearchResult, MemoryType
 from agentflow.utils.background_task_manager import BackgroundTaskManager
 from agentflow.utils.decorators import tool
 
+
+if TYPE_CHECKING:
+    from agentflow.graph.state_graph import StateGraph
 
 logger = logging.getLogger("agentflow.store.long_term_memory")
 
@@ -124,6 +173,70 @@ def _format_search_results(results: list[MemorySearchResult]) -> list[dict[str, 
     ]
 
 
+# ---------------------------------------------------------------------------
+# Deduplication
+# ---------------------------------------------------------------------------
+# When the LLM provides a ``memory_key`` (a short snake_case topic label
+# like ``"user_name"`` or ``"favorite_language"``), we use it for exact
+# dedup: if a memory with the same key already exists for the user it is
+# *updated* rather than duplicated.  This is independent of embedding
+# similarity and thus works even when only the value changes (e.g. the
+# user's name goes from "Atharv" to "Prashant").
+#
+# As a fallback (no key provided) we still try a high-similarity check.
+# ---------------------------------------------------------------------------
+
+_IDENTICAL_SCORE_THRESHOLD: float = 0.95
+
+
+async def _find_duplicate_by_key(
+    store: BaseStore,
+    config: dict[str, Any],
+    memory_key: str,
+    mem_type: MemoryType,
+) -> MemorySearchResult | None:
+    """Find an existing memory with the same ``memory_key`` for this user.
+
+    Uses a metadata filter — no embedding similarity needed.
+    """
+    try:
+        search_cfg = {k: v for k, v in config.items() if k != "thread_id"}
+        results = await store.asearch(
+            search_cfg,
+            memory_key,  # query text (needed for embedding, but filter does the work)
+            memory_type=mem_type,
+            limit=1,
+            filters={"memory_key": memory_key},
+        )
+        return results[0] if results else None
+    except Exception:
+        logger.debug("Key-based duplicate check failed", exc_info=True)
+        return None
+
+
+async def _find_duplicate_by_similarity(
+    store: BaseStore,
+    config: dict[str, Any],
+    content: str,
+    mem_type: MemoryType,
+    threshold: float = _IDENTICAL_SCORE_THRESHOLD,
+) -> MemorySearchResult | None:
+    """Fallback: find near-identical content via embedding similarity."""
+    try:
+        search_cfg = {k: v for k, v in config.items() if k != "thread_id"}
+        results = await store.asearch(
+            search_cfg,
+            content,
+            memory_type=mem_type,
+            limit=1,
+            score_threshold=threshold,
+        )
+        return results[0] if results else None
+    except Exception:
+        logger.debug("Similarity-based duplicate check failed", exc_info=True)
+        return None
+
+
 async def _do_write(
     store: BaseStore,
     config: dict[str, Any],
@@ -135,8 +248,55 @@ async def _do_write(
     metadata: dict[str, Any] | None,
     write_mode: str,
 ) -> dict[str, Any]:
-    """Execute a write operation against the store."""
+    """Execute a write operation against the store.
+
+    For ``action="store"`` an automatic **deduplication** check runs first:
+
+    1. If ``memory_key`` is present in *metadata*, look for an existing
+       memory with the same key (exact metadata filter).  If found →
+       **update** the existing record.
+    2. Otherwise, fall back to embedding similarity: if a near-identical
+       memory exists (score ≥ 0.95) → **skip** the write.
+    """
     if action == "store":
+        memory_key = (metadata or {}).get("memory_key", "")
+
+        # --- Strategy 1: key-based dedup (reliable for topic changes) ---
+        if memory_key:
+            existing = await _find_duplicate_by_key(
+                store, config, memory_key, mem_type
+            )
+            if existing:
+                logger.info(
+                    "Updating existing memory by key '%s' (id=%s)",
+                    memory_key,
+                    existing.id,
+                )
+                await store.aupdate(
+                    config, str(existing.id), content, metadata=metadata
+                )
+                return {
+                    "status": "updated_existing",
+                    "memory_id": str(existing.id),
+                    "memory_key": memory_key,
+                }
+
+        # --- Strategy 2: similarity-based dedup (catch identical text) ---
+        existing = await _find_duplicate_by_similarity(
+            store, config, content, mem_type
+        )
+        if existing:
+            logger.info(
+                "Skipping duplicate memory (score=%.3f, id=%s)",
+                existing.score,
+                existing.id,
+            )
+            return {
+                "status": "skipped_duplicate",
+                "memory_id": str(existing.id),
+                "score": round(existing.score, 4) if existing.score else None,
+            }
+
         mid = await store.astore(
             config, content, memory_type=mem_type, category=category, metadata=metadata
         )
@@ -171,15 +331,18 @@ async def _do_write(
     description=(
         "Search, store, update or delete long-term memories. "
         "Use action='search' with a query to recall relevant memories. "
-        "Use action='store' with content to save new memories. "
-        "Use action='update' with memory_id and content to modify existing memories. "
+        "Use action='store' with content and a short snake_case memory_key "
+        "(e.g. 'user_name', 'favorite_language') to save new memories. "
+        "The system uses memory_key to detect duplicates — if a memory with the "
+        "same key already exists it will be updated automatically. "
         "Use action='delete' with memory_id to remove memories."
     ),
     tags=["memory", "long_term_memory"],
 )
 async def memory_tool(  # noqa: PLR0913, PLR0911
-    action: Literal["search", "store", "update", "delete"],
+    action: Literal["search", "store", "update", "delete"] = "search",
     content: str = "",
+    memory_key: str = "",
     memory_id: str = "",
     query: str = "",
     memory_type: str = "episodic",
@@ -203,6 +366,10 @@ async def memory_tool(  # noqa: PLR0913, PLR0911
     cfg = config or {}
     mem_type = _validate_memory_type(memory_type)
 
+    # Inject memory_key into metadata so _do_write can find it.
+    if memory_key:
+        metadata = {**(metadata or {}), "memory_key": memory_key}
+
     # --- Validation ---
     if action == "search" and not query:
         return json.dumps({"error": "query is required for search"})
@@ -218,8 +385,20 @@ async def memory_tool(  # noqa: PLR0913, PLR0911
     try:
         # --- Read ---
         if action == "search":
+            # Flush any in-flight background writes so the search sees the
+            # latest data (e.g. writes scheduled during a previous query).
+            if _write_tracker.pending_count > 0:
+                logger.debug(
+                    "Waiting for %d pending writes before search…",
+                    _write_tracker.pending_count,
+                )
+                await _write_tracker.wait_for_pending(timeout=15)
+
+            # Search across ALL threads for the user — long-term memory
+            # is not scoped to a single conversation thread.
+            search_cfg = {k: v for k, v in cfg.items() if k != "thread_id"}
             results = await store.asearch(
-                cfg,
+                search_cfg,
                 query,
                 memory_type=mem_type,
                 limit=limit,
@@ -288,6 +467,15 @@ def create_memory_preload_node(
     _builder = query_builder or _default_query_builder
 
     async def _preload_node(state: AgentState, config: dict[str, Any]) -> list[Message]:
+        # Flush any in-flight background writes so the preload search
+        # always sees the latest persisted data.
+        if _write_tracker.pending_count > 0:
+            logger.debug(
+                "Waiting for %d pending writes before preload…",
+                _write_tracker.pending_count,
+            )
+            await _write_tracker.wait_for_pending(timeout=15)
+
         query = _builder(state)
         if not query:
             return []
@@ -302,8 +490,12 @@ def create_memory_preload_node(
         if max_tokens is not None:
             search_kwargs["max_tokens"] = max_tokens
 
+        # Search across ALL threads for the user — long-term memory is not
+        # scoped to a single conversation thread.
+        search_config = {k: v for k, v in config.items() if k != "thread_id"}
+
         try:
-            results = await store.asearch(config, query, **search_kwargs)
+            results = await store.asearch(search_config, query, **search_kwargs)
         except Exception:
             logger.exception("Memory preload search failed")
             return []
@@ -334,10 +526,16 @@ _WRITE_INSTRUCTIONS = (
     "\n\nYou have access to a memory_tool for writing to long-term memory.\n"
     "After processing each user message, decide whether any new information "
     "(facts, preferences, names, decisions) should be persisted.\n"
-    "- To save important facts or preferences, call memory_tool with "
-    "action='store' and the content to remember.\n"
-    "- To modify existing memories, use action='update' with the memory_id.\n"
+    "- To save or update facts, call memory_tool with action='store', "
+    "content (the fact to remember), and a short snake_case memory_key "
+    "that identifies the topic (e.g. 'user_name', 'favorite_language', "
+    "'user_hobby'). The system uses memory_key to detect duplicates — "
+    "if a memory with the same key already exists it is updated "
+    "automatically, so you never create duplicates.\n"
     "- To remove outdated information, use action='delete' with the memory_id.\n"
+    "Always use action='store' with a memory_key for new or changed "
+    "information — do NOT use action='update' unless you have a specific "
+    "memory_id from a previous search result.\n"
     "Writing is asynchronous — it will not slow down your response."
 )
 
@@ -367,16 +565,182 @@ def get_memory_system_prompt(
 
     if mode == "postload":
         return (
-            "You have access to a memory_tool that can search, store, update, "
-            "and delete long-term memories.\n"
+            "You have access to a memory_tool that can search, store, and "
+            "delete long-term memories.\n"
             "- To recall relevant information, call memory_tool with action='search' "
             "and a descriptive query.\n"
-            "- To save important facts or preferences, call memory_tool with "
-            "action='store' and the content to remember.\n"
-            "- To modify existing memories, use action='update' with the memory_id.\n"
+            "- To save or update facts, call memory_tool with action='store', "
+            "content (the fact), and a short snake_case memory_key that identifies "
+            "the topic (e.g. 'user_name', 'favorite_language'). The system uses "
+            "memory_key to detect duplicates — if a memory with the same key "
+            "already exists it is updated automatically.\n"
             "- To remove outdated information, use action='delete' with the memory_id.\n"
+            "Always use action='store' with a memory_key — do NOT use action='update' "
+            "unless you have a specific memory_id from a previous search result.\n"
             "Only search memory when prior context would genuinely improve your response.\n"
             "Writing is asynchronous — it will not slow down your response."
         )
 
     return ""
+
+
+# ---------------------------------------------------------------------------
+# MemoryIntegration — unified public API
+# ---------------------------------------------------------------------------
+
+
+class MemoryIntegration:
+    """Unified long-term memory integration for AgentFlow graphs.
+
+    ``MemoryIntegration`` is the **single entry point** for adding long-term
+    memory to any graph.  Callers only configure a *store* and a
+    *retrieval_mode*; the class provides everything needed to wire memory
+    into a ``StateGraph``.
+
+    Parameters
+    ----------
+    store:
+        A ``BaseStore`` instance (e.g. ``QdrantStore``, ``Mem0Store``).
+    retrieval_mode:
+        One of ``"no_retrieval"`` (default), ``"preload"``, ``"postload"``.
+        Accepts both ``ReadMode`` enum values and plain strings.
+    limit:
+        Maximum number of memories to retrieve (preload / search).
+    score_threshold:
+        Minimum similarity score for retrieval (0.0 = no threshold).
+    max_tokens:
+        Optional token budget for retrieved memory context.
+    query_builder:
+        Custom function ``(AgentState) -> str`` to extract the search query
+        from state.  Defaults to the latest user message text.
+    preload_prompt_template:
+        Custom Jinja-style template for the preload system message.
+        Must contain ``{memories}`` placeholder.
+
+    Examples
+    --------
+    Minimal preload setup::
+
+        memory = MemoryIntegration(store=my_store, retrieval_mode="preload")
+        memory.wire(graph, entry_to="main")
+        tool_node = ToolNode([my_tool, *memory.tools])
+        app = graph.compile(store=my_store)
+
+    Postload (LLM-driven retrieval)::
+
+        memory = MemoryIntegration(store=my_store, retrieval_mode="postload")
+        memory.wire(graph, entry_to="main")
+        tool_node = ToolNode([my_tool, *memory.tools])
+        app = graph.compile(store=my_store)
+
+    No retrieval (write-only)::
+
+        memory = MemoryIntegration(store=my_store)
+        # memory.retrieval_mode == ReadMode.NO_RETRIEVAL by default
+        tool_node = ToolNode([my_tool, *memory.tools])
+    """
+
+    def __init__(
+        self,
+        store: BaseStore,
+        retrieval_mode: ReadMode | str = ReadMode.NO_RETRIEVAL,
+        limit: int = 5,
+        score_threshold: float = 0.0,
+        max_tokens: int | None = None,
+        query_builder: Callable[[AgentState], str] | None = None,
+        preload_prompt_template: str | None = None,
+    ) -> None:
+        if isinstance(retrieval_mode, str):
+            retrieval_mode = ReadMode(retrieval_mode)
+        self._store = store
+        self._retrieval_mode = retrieval_mode
+        self._limit = limit
+        self._score_threshold = score_threshold
+        self._max_tokens = max_tokens
+        self._query_builder = query_builder
+        self._preload_prompt_template = preload_prompt_template
+
+        # Build preload node eagerly so .preload_node is stable.
+        self._preload_node_fn: Callable | None = None
+        if self._retrieval_mode == ReadMode.PRELOAD:
+            self._preload_node_fn = create_memory_preload_node(
+                store=self._store,
+                query_builder=self._query_builder,
+                limit=self._limit,
+                score_threshold=self._score_threshold,
+                system_prompt_template=(
+                    self._preload_prompt_template or _DEFAULT_MEMORY_PROMPT
+                ),
+                max_tokens=self._max_tokens,
+            )
+
+    # -- Properties ---------------------------------------------------------
+
+    @property
+    def retrieval_mode(self) -> ReadMode:
+        """The configured retrieval mode."""
+        return self._retrieval_mode
+
+    @property
+    def store(self) -> BaseStore:
+        """The underlying vector / memory store."""
+        return self._store
+
+    @property
+    def system_prompt(self) -> str:
+        """System prompt fragment for the configured retrieval mode.
+
+        Include this in your LLM node's system prompts to enable
+        memory awareness and write capability.
+        """
+        return get_memory_system_prompt(self._retrieval_mode.value)
+
+    @property
+    def tools(self) -> list[Callable]:
+        """Memory tools to register with ``ToolNode``.
+
+        All modes include ``memory_tool`` so the LLM can always decide to
+        write.  In *postload* mode the LLM also uses it for reads.
+        """
+        return [memory_tool]
+
+    @property
+    def preload_node(self) -> Callable | None:
+        """Preload node function for *preload* mode, ``None`` otherwise.
+
+        This is an async node function with signature
+        ``(state, config) -> list[Message]``.
+        """
+        return self._preload_node_fn
+
+    # -- Graph wiring -------------------------------------------------------
+
+    def wire(
+        self,
+        graph: "StateGraph",
+        entry_to: str,
+        preload_node_name: str = "memory_preload",
+    ) -> None:
+        """Wire memory into a ``StateGraph`` in one call.
+
+        * **preload** mode → adds a preload node, sets it as entry point,
+          and edges it to *entry_to*.
+        * **no_retrieval / postload** → simply sets *entry_to* as the
+          entry point.
+
+        Parameters
+        ----------
+        graph:
+            The ``StateGraph`` being built.
+        entry_to:
+            Name of the node that should receive control after any memory
+            retrieval (typically your LLM node).
+        preload_node_name:
+            Name to use for the preload node (default ``"memory_preload"``).
+        """
+        if self._retrieval_mode == ReadMode.PRELOAD and self._preload_node_fn:
+            graph.add_node(preload_node_name, self._preload_node_fn)
+            graph.set_entry_point(preload_node_name)
+            graph.add_edge(preload_node_name, entry_to)
+        else:
+            graph.set_entry_point(entry_to)

@@ -1,6 +1,7 @@
 from .base_store import BaseStore
 from .embedding import BaseEmbedding, GoogleEmbedding, OpenAIEmbedding
 from .long_term_memory import (
+    MemoryIntegration,
     MemoryWriteTracker,
     ReadMode,
     create_memory_preload_node,
@@ -28,6 +29,7 @@ __all__ = [
     "DistanceMetric",
     "GoogleEmbedding",
     "Mem0Store",
+    "MemoryIntegration",
     "MemoryRecord",
     "MemorySearchResult",
     "MemoryType",
