@@ -188,7 +188,70 @@ class TestLiteLLMConverter:
         assert isinstance(message.content[1], ReasoningBlock)
         assert message.content[1].summary == "Let me think through this step by step..."
         assert message.reasoning == "Let me think through this step by step..."
-    
+
+    @patch('agentflow.adapters.llm.litellm_converter.HAS_LITELLM', True)
+    @pytest.mark.asyncio
+    async def test_convert_response_with_thinking_blocks(self, converter):
+        """Test response conversion with thinking_blocks when reasoning_content is empty."""
+        response_data = {
+            "id": "test_thinking_blocks",
+            "choices": [
+                {
+                    "message": {
+                        "content": "The answer is 42.",
+                        "reasoning_content": "",
+                        "thinking_blocks": [
+                            {"type": "thinking", "thinking": "First, let me consider..."},
+                            {"type": "thinking", "thinking": "Now combining results..."},
+                        ],
+                    },
+                    "finish_reason": "stop",
+                }
+            ],
+            "usage": {},
+        }
+
+        response = MockModelResponse(response_data)
+
+        with patch('agentflow.state.message.generate_id', return_value="thinking_id"):
+            message = await converter.convert_response(response)
+
+        assert len(message.content) == 2
+        assert isinstance(message.content[0], TextBlock)
+        assert message.content[0].text == "The answer is 42."
+        assert isinstance(message.content[1], ReasoningBlock)
+        assert message.content[1].summary == "First, let me consider...\n\nNow combining results..."
+        assert message.reasoning == "First, let me consider...\n\nNow combining results..."
+
+    @patch('agentflow.adapters.llm.litellm_converter.HAS_LITELLM', True)
+    @pytest.mark.asyncio
+    async def test_convert_response_thinking_blocks_ignored_when_reasoning_content_present(self, converter):
+        """Test that thinking_blocks are ignored when reasoning_content is already present."""
+        response_data = {
+            "id": "test_reasoning_priority",
+            "choices": [
+                {
+                    "message": {
+                        "content": "Result",
+                        "reasoning_content": "Direct reasoning",
+                        "thinking_blocks": [
+                            {"type": "thinking", "thinking": "Should be ignored"},
+                        ],
+                    },
+                    "finish_reason": "stop",
+                }
+            ],
+            "usage": {},
+        }
+
+        response = MockModelResponse(response_data)
+
+        with patch('agentflow.state.message.generate_id', return_value="priority_id"):
+            message = await converter.convert_response(response)
+
+        assert isinstance(message.content[1], ReasoningBlock)
+        assert message.content[1].summary == "Direct reasoning"
+
     @patch('agentflow.adapters.llm.litellm_converter.HAS_LITELLM', True)
     @pytest.mark.asyncio
     async def test_convert_response_with_tool_calls(self, converter):
@@ -327,7 +390,43 @@ class TestLiteLLMConverter:
         assert len(message.content) == 1
         assert isinstance(message.content[0], ReasoningBlock)
         assert message.content[0].summary == "Let me think..."
-    
+
+    def test_process_chunk_thinking_blocks_in_delta(self, converter):
+        """Test _process_chunk with thinking_blocks in delta when reasoning_content is empty."""
+        delta = MockDelta(content="", reasoning_content="")
+        # Attach thinking_blocks attribute to the delta
+        delta.thinking_blocks = [
+            {"type": "thinking", "thinking": "Delta thinking step"},
+        ]
+        choice = MockChoice(delta)
+        chunk = MockModelResponseStream("test_thinking_delta", [choice])
+
+        with patch('agentflow.state.message.generate_id', return_value="thinking_delta_id"):
+            result = converter._process_chunk(chunk, 1, "", "", [], set())
+
+        accumulated_content, accumulated_reasoning, tool_calls, seq, message = result
+        assert accumulated_reasoning == "Delta thinking step"
+        assert message is not None
+        assert len(message.content) == 1
+        assert isinstance(message.content[0], ReasoningBlock)
+        assert message.content[0].summary == "Delta thinking step"
+
+    def test_process_chunk_thinking_blocks_ignored_when_reasoning_content_present(self, converter):
+        """Test that thinking_blocks in delta are ignored when reasoning_content is present."""
+        delta = MockDelta(content="", reasoning_content="Direct delta reasoning")
+        delta.thinking_blocks = [
+            {"type": "thinking", "thinking": "Should be ignored"},
+        ]
+        choice = MockChoice(delta)
+        chunk = MockModelResponseStream("test_priority_delta", [choice])
+
+        with patch('agentflow.state.message.generate_id', return_value="priority_delta_id"):
+            result = converter._process_chunk(chunk, 1, "", "", [], set())
+
+        accumulated_content, accumulated_reasoning, tool_calls, seq, message = result
+        assert accumulated_reasoning == "Direct delta reasoning"
+        assert message.content[0].summary == "Direct delta reasoning"
+
     def test_process_chunk_tool_calls(self, converter):
         """Test _process_chunk with tool calls."""
         tool_call = MockToolCall("call_456", "test_function", '{"param": "value"}')

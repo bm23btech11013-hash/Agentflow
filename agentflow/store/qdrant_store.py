@@ -236,7 +236,7 @@ class QdrantStore(BaseStore):
         if collection in self._collection_cache:
             return
 
-        from qdrant_client.http.models import VectorParams
+        from qdrant_client.http.models import PayloadSchemaType, VectorParams
 
         try:
             # Check if collection exists
@@ -256,23 +256,33 @@ class QdrantStore(BaseStore):
                 )
                 logger.info(f"Created collection: {collection}")
 
-                # Create payload indexes for filterable fields
-                # Required for remote/cloud Qdrant where full scan is disabled
-                from qdrant_client.http.models import PayloadSchemaType
-
-                for field_name in (
-                    "user_id",
-                    "thread_id",
-                    "memory_type",
-                    "category",
-                    "memory_key",
-                ):
+            # Ensure payload indexes exist for filterable fields.
+            # Required for remote/cloud Qdrant where full scan is disabled.
+            # Qdrant's create_payload_index is idempotent — calling it on an
+            # already-indexed field is a no-op, so this is safe for both new
+            # and pre-existing collections.
+            for field_name in (
+                "user_id",
+                "thread_id",
+                "memory_type",
+                "category",
+                "memory_key",
+            ):
+                try:
                     await self.client.create_payload_index(
                         collection_name=collection,
                         field_name=field_name,
                         field_schema=PayloadSchemaType.KEYWORD,
                     )
-                logger.info(f"Created payload indexes for collection: {collection}")
+                except Exception:
+                    # Best-effort: log and continue so one failing index
+                    # doesn't prevent the collection from being usable.
+                    logger.debug(
+                        "Payload index for '%s' on '%s' may already exist or failed",
+                        field_name,
+                        collection,
+                    )
+            logger.info(f"Ensured payload indexes for collection: {collection}")
 
             self._collection_cache.add(collection)
         except Exception as e:

@@ -144,6 +144,64 @@ class TestQdrantStore:
         mock_qdrant_client.create_collection.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_collection_creation_creates_payload_indexes(self, qdrant_store, mock_qdrant_client):
+        """Test that payload indexes are created for all filterable fields on new collections."""
+        from qdrant_client.http.models import PayloadSchemaType
+
+        mock_qdrant_client.get_collections.return_value = MagicMock(collections=[])
+
+        await qdrant_store._ensure_collection_exists("test_collection")
+
+        expected_fields = ["user_id", "thread_id", "memory_type", "category", "memory_key"]
+        assert mock_qdrant_client.create_payload_index.call_count == len(expected_fields)
+
+        called_fields = [
+            call.kwargs["field_name"]
+            for call in mock_qdrant_client.create_payload_index.call_args_list
+        ]
+        assert called_fields == expected_fields
+
+        for call in mock_qdrant_client.create_payload_index.call_args_list:
+            assert call.kwargs["collection_name"] == "test_collection"
+            assert call.kwargs["field_schema"] == PayloadSchemaType.KEYWORD
+
+    @pytest.mark.asyncio
+    async def test_payload_index_failure_is_best_effort(self, qdrant_store, mock_qdrant_client):
+        """Test that individual payload index failures are caught and don't prevent caching."""
+        mock_qdrant_client.get_collections.return_value = MagicMock(collections=[])
+        mock_qdrant_client.create_payload_index.side_effect = Exception("index creation failed")
+
+        # Should NOT raise — individual index failures are best-effort.
+        await qdrant_store._ensure_collection_exists("test_collection")
+
+        # Collection should still be cached.
+        assert "test_collection" in qdrant_store._collection_cache
+        # All 5 fields should have been attempted.
+        assert mock_qdrant_client.create_payload_index.call_count == 5
+
+    @pytest.mark.asyncio
+    async def test_existing_collection_ensures_payload_indexes(self, qdrant_store, mock_qdrant_client):
+        """Test that payload indexes are ensured even when the collection already exists."""
+        from qdrant_client.http.models import PayloadSchemaType
+
+        existing = MagicMock()
+        existing.name = "test_collection"
+        mock_qdrant_client.get_collections.return_value = MagicMock(collections=[existing])
+
+        await qdrant_store._ensure_collection_exists("test_collection")
+
+        mock_qdrant_client.create_collection.assert_not_called()
+        # Indexes should still be created (idempotent) for existing collections.
+        expected_fields = ["user_id", "thread_id", "memory_type", "category", "memory_key"]
+        assert mock_qdrant_client.create_payload_index.call_count == len(expected_fields)
+
+        called_fields = [
+            call.kwargs["field_name"]
+            for call in mock_qdrant_client.create_payload_index.call_args_list
+        ]
+        assert called_fields == expected_fields
+
+    @pytest.mark.asyncio
     async def test_collection_exists_cache(self, qdrant_store, mock_qdrant_client):
         """Test collection existence caching."""
         qdrant_store._collection_cache.add("test_collection")

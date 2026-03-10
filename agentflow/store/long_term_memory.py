@@ -20,10 +20,12 @@ Write behaviour (all modes)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
     * The LLM decides *what* to persist by calling ``memory_tool`` with
       ``action="store"`` / ``"update"`` / ``"delete"``.
-    * Every write is executed **asynchronously in the background** so it
-      never blocks the response.
-    * ``MemoryWriteTracker`` guarantees that pending writes complete before
-      process shutdown.
+    * By default, writes are executed **asynchronously in the background** so
+      they never block the response. Pass ``async_write=False`` to
+      ``memory_tool`` to force a synchronous write (useful for tests or when
+      write ordering matters).
+    * ``MemoryWriteTracker`` guarantees that pending async writes complete
+      before process shutdown.
     * Write modes: ``merge`` (default) or ``replace``.
 
 Quick start
@@ -479,8 +481,6 @@ def create_memory_preload_node(
         }
         if score_threshold > 0:
             search_kwargs["score_threshold"] = score_threshold
-        if memory_types:
-            search_kwargs["memory_type"] = memory_types[0]
         if max_tokens is not None:
             search_kwargs["max_tokens"] = max_tokens
 
@@ -489,7 +489,26 @@ def create_memory_preload_node(
         search_config = {k: v for k, v in config.items() if k != "thread_id"}
 
         try:
-            results = await store.asearch(search_config, query, **search_kwargs)
+            if memory_types:
+                # Search each requested memory type and merge results.
+                import asyncio as _asyncio
+
+                coros = [
+                    store.asearch(search_config, query, memory_type=mt, **search_kwargs)
+                    for mt in memory_types
+                ]
+                all_results = await _asyncio.gather(*coros, return_exceptions=True)
+                results = []
+                for r in all_results:
+                    if isinstance(r, BaseException):
+                        logger.warning("Memory preload search for a type failed: %s", r)
+                        continue
+                    results.extend(r)
+                # Re-sort by score (descending) and cap at the configured limit.
+                results.sort(key=lambda r: r.score or 0.0, reverse=True)
+                results = results[:limit]
+            else:
+                results = await store.asearch(search_config, query, **search_kwargs)
         except Exception:
             logger.exception("Memory preload search failed")
             return []
