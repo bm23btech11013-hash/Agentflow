@@ -53,6 +53,7 @@ kafka = ["aiokafka>=0.8.0"]
 rabbitmq = ["aio-pika>=9.0.0"]
 qdrant = ["qdrant-client>=1.7.0"]
 mem0 = ["mem0ai>=0.1.117"]
+a2a_sdk = ["a2a-sdk>=0.2.7"]
 
 all_publishers = [
     "redis>=4.2",
