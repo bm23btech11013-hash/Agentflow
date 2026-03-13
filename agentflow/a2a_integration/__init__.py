@@ -29,6 +29,7 @@ Quick start — client::
 
 from __future__ import annotations
 
+
 try:
     import a2a  # noqa: F401 — probe for a2a-sdk availability
 except ImportError as _exc:
@@ -47,6 +48,7 @@ from agentflow.a2a_integration.server import (
     create_a2a_server,
     make_agent_card,
 )
+
 
 __all__ = [
     "AgentFlowExecutor",

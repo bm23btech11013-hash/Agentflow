@@ -25,6 +25,7 @@ from a2a.types import (
 
 from agentflow.a2a_integration.executor import AgentFlowExecutor
 
+
 if TYPE_CHECKING:
     from starlette.applications import Starlette
 
@@ -136,7 +137,7 @@ def create_a2a_server(
     compiled_graph: CompiledGraph,
     agent_card: AgentCard,
     *,
-    host: str = "0.0.0.0",
+    host: str = "127.0.0.1",
     port: int = 9999,
     streaming: bool = False,
     executor_config: dict[str, Any] | None = None,

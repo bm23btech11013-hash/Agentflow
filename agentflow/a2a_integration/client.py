@@ -21,8 +21,9 @@ import httpx
 from a2a.client import A2AClient
 from a2a.types import (
     Message as A2AMessage,
+)
+from a2a.types import (
     MessageSendParams,
-    Part,
     Role,
     SendMessageRequest,
     TextPart,
@@ -30,6 +31,7 @@ from a2a.types import (
 
 from agentflow.state.agent_state import AgentState
 from agentflow.state.message import Message as AFMessage
+
 
 logger = logging.getLogger(__name__)
 

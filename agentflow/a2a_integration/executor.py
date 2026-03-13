@@ -34,6 +34,7 @@ from agentflow.state.message import Message as AFMessage
 from agentflow.state.stream_chunks import StreamEvent
 from agentflow.utils.constants import ResponseGranularity
 
+
 logger = logging.getLogger(__name__)
 
 
@@ -96,18 +97,12 @@ class AgentFlowExecutor(AgentExecutor):
             # same session.  Falls back to task_id for one-shot callers.
             run_config: dict[str, Any] = {**self._base_config}
             if "thread_id" not in run_config:
-                run_config["thread_id"] = (
-                    context.context_id or context.task_id or ""
-                )
+                run_config["thread_id"] = context.context_id or context.task_id or ""
 
             if self._streaming:
-                response_text = await self._execute_streaming(
-                    messages, run_config, updater
-                )
+                response_text = await self._execute_streaming(messages, run_config, updater)
             else:
-                response_text = await self._execute_blocking(
-                    messages, run_config
-                )
+                response_text = await self._execute_blocking(messages, run_config)
 
             # --- emit the final artifact ---------------------------------
             await updater.add_artifact([TextPart(text=response_text)])
@@ -115,9 +110,7 @@ class AgentFlowExecutor(AgentExecutor):
 
         except Exception as exc:
             logger.exception("AgentFlowExecutor: graph execution failed")
-            error_msg = updater.new_agent_message(
-                parts=[TextPart(text=f"Error: {exc!s}")]
-            )
+            error_msg = updater.new_agent_message(parts=[TextPart(text=f"Error: {exc!s}")])
             await updater.failed(message=error_msg)
 
     async def cancel(
@@ -163,12 +156,8 @@ class AgentFlowExecutor(AgentExecutor):
                 if text:
                     last_text = text
                     # signal progress with the latest text
-                    progress_msg = updater.new_agent_message(
-                        parts=[TextPart(text=text)]
-                    )
-                    await updater.update_status(
-                        TaskState.working, message=progress_msg
-                    )
+                    progress_msg = updater.new_agent_message(parts=[TextPart(text=text)])
+                    await updater.update_status(TaskState.working, message=progress_msg)
             elif chunk.event == StreamEvent.STATE and chunk.state is not None:
                 # final state arrived — extract from it
                 assistant_text = self._extract_state_text(chunk.state)

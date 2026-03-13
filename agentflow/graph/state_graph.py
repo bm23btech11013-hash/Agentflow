@@ -103,7 +103,7 @@ class StateGraph[StateT: AgentState]:
             type(context_manager).__name__ if context_manager else None,
         )
 
-        # State handling – accept both a class (e.g. AgentState) and an instance
+        # State handling - accept both a class (e.g. AgentState) and an instance
         if state is not None:
             if isinstance(state, type) and issubclass(state, AgentState):
                 self._state: StateT = state()  # type: ignore[assignment]
