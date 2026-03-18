@@ -141,7 +141,11 @@ class CompiledGraph[StateT: AgentState]:
         config: dict[str, Any] | None,
         is_stream: bool = False,
     ) -> dict[str, Any]:
-        cfg = config or {}
+        cfg = dict(config or {})
+
+        if "thread_id" not in cfg:
+            cfg["thread_id"] = InjectQ.get_instance().try_get("generated_id") or str(uuid4())
+
         if "is_stream" not in cfg:
             cfg["is_stream"] = is_stream
         if "user_id" not in cfg:
@@ -275,7 +279,7 @@ class CompiledGraph[StateT: AgentState]:
         - If no active thread or no checkpointer, returns not-running
         - If state exists and is running, set stop_requested flag in thread info
         """
-        cfg = self._prepare_config(config, is_stream=bool(config.get("is_stream", False)))
+        cfg = self._prepare_config(config, is_stream=bool((config or {}).get("is_stream", False)))
         if not self._checkpointer:
             return {"ok": False, "reason": "no-checkpointer"}
 

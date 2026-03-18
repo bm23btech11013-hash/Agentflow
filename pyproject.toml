@@ -1,6 +1,6 @@
 [project]
 name = "10xscale-agentflow"
-version = "0.6.1"
+version = "0.6.2"
 description = "10xScale Agentflow is a Python framework for building, orchestrating, and managing multi-agent systems. Designed for flexibility and scalability, 10xScale Agentflow enables developers to create intelligent agents that collaborate, communicate, and solve complex tasks together."
 readme = "README.md"
 license = {file = "LICENSE"}
@@ -257,6 +257,7 @@ dev = [
     "mkdocs-autorefs",
     "mkdocs-section-index",
     "mkdocs_gen_files",
-    "mem0ai>=0.1.117"
+    "mem0ai>=0.1.117",
+    "google-genai>=1.56.0",
 ]
 

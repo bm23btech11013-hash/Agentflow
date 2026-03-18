@@ -1,5 +1,5 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = ">=3.12"
 resolution-markers = [
     "python_full_version >= '3.13'",
@@ -8,7 +8,7 @@ resolution-markers = [
 
 [[package]]
 name = "10xscale-agentflow"
-version = "0.5.6"
+version = "0.6.2"
 source = { editable = "." }
 dependencies = [
     { name = "injectq" },
@@ -45,6 +45,9 @@ mcp = [
 mem0 = [
     { name = "mem0ai" },
 ]
+openai = [
+    { name = "openai" },
+]
 pg-checkpoint = [
     { name = "asyncpg" },
     { name = "redis" },
@@ -64,6 +67,7 @@ dev = [
     { name = "asyncpg" },
     { name = "composio" },
     { name = "fastmcp" },
+    { name = "google-genai" },
     { name = "hypothesis" },
     { name = "langchain-community" },
     { name = "langchain-core" },
@@ -98,12 +102,13 @@ requires-dist = [
     { name = "composio", marker = "extra == 'composio'", specifier = ">=0.8.0" },
     { name = "fastmcp", marker = "extra == 'mcp'", specifier = ">=2.11.3" },
     { name = "google-genai", marker = "extra == 'google-genai'", specifier = ">=1.56.0" },
-    { name = "injectq", specifier = ">=0.3.0" },
+    { name = "injectq", specifier = ">=0.4.0" },
     { name = "langchain-community", marker = "extra == 'langchain'", specifier = ">=0.3.0" },
     { name = "langchain-core", marker = "extra == 'langchain'", specifier = ">=0.3.0" },
     { name = "litellm", marker = "extra == 'litellm'", specifier = ">=1.77.0" },
     { name = "mcp", marker = "extra == 'mcp'", specifier = ">=1.13.0" },
     { name = "mem0ai", marker = "extra == 'mem0'", specifier = ">=0.1.117" },
+    { name = "openai", marker = "extra == 'openai'", specifier = ">=1.77.0" },
     { name = "pydantic" },
     { name = "python-dotenv" },
     { name = "qdrant-client", marker = "extra == 'qdrant'", specifier = ">=1.7.0" },
@@ -111,13 +116,14 @@ requires-dist = [
     { name = "redis", marker = "extra == 'pg-checkpoint'", specifier = ">=4.2" },
     { name = "redis", marker = "extra == 'redis'", specifier = ">=4.2" },
 ]
-provides-extras = ["litellm", "google-genai", "pg-checkpoint", "mcp", "composio", "langchain", "redis", "kafka", "rabbitmq", "qdrant", "mem0", "all-publishers"]
+provides-extras = ["litellm", "google-genai", "openai", "pg-checkpoint", "mcp", "composio", "langchain", "redis", "kafka", "rabbitmq", "qdrant", "mem0", "all-publishers"]
 
 [package.metadata.requires-dev]
 dev = [
     { name = "asyncpg", specifier = ">=0.30.0" },
     { name = "composio", specifier = ">=0.8.15" },
     { name = "fastmcp", specifier = ">=2.12.3" },
+    { name = "google-genai", specifier = ">=1.56.0" },
     { name = "hypothesis", specifier = ">=6.100.0" },
     { name = "langchain-community", specifier = ">=0.3.29" },
     { name = "langchain-core", specifier = ">=0.3.76" },
@@ -1238,14 +1244,14 @@ wheels = [
 
 [[package]]
 name = "injectq"
-version = "0.3.2"
+version = "0.4.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/6e/48/27f54089093be0c99c6d76120fd8abc39c32ca8e7d0e38c0faca4e0bbca3/injectq-0.3.2.tar.gz", hash = "sha256:b8499c4080816ed11a469df645a0d8811f15cd627f4b265115e31db2b23d29d0", size = 454498, upload-time = "2025-09-15T02:31:17.7Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/72/78/6c7b66d0c9ff30a61baa196a3a4d2621d890c9bbe1b081781ff0797f13d8/injectq-0.4.1.tar.gz", hash = "sha256:de383debdb1591d4be9e2164e5ba1686af4ea0686885b3d085c3126b3b42bc31", size = 3218348, upload-time = "2026-03-17T09:33:51.48Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/97/3d/90948d0d04740bd6e3117894d7d85948ce5dbd321fd2a5d474f4742bb0a5/injectq-0.3.2-py3-none-any.whl", hash = "sha256:f569aa24dfdf16021bbc2f6e094871b92797d6a70a344f0469f4aac4908e0c43", size = 66521, upload-time = "2025-09-15T02:31:15.156Z" },
+    { url = "https://files.pythonhosted.org/packages/65/a6/cbfd571bd34671f66e88da411abb4a6384fcbd60831a28909f5028513bf5/injectq-0.4.1-py3-none-any.whl", hash = "sha256:6fd6dc56e424ba1a4d5f2595c4cd71c33846a7c13d04ac18e5de4f5bfb45c79c", size = 74023, upload-time = "2026-03-17T09:33:47.608Z" },
 ]
 
 [[package]]

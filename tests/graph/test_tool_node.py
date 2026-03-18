@@ -3,6 +3,7 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from injectq import Inject
 
 from agentflow.graph.tool_node import ToolNode
 from agentflow.state import AgentState
@@ -90,6 +91,29 @@ class TestToolNode:
         assert "state" not in params["properties"]
         assert "config" not in params["properties"]
         assert "tool_call_id" not in params["properties"]
+
+    @pytest.mark.asyncio
+    async def test_get_local_tools_excludes_inject_defaults(self):
+        """Test that Inject defaults are excluded before schema serialization."""
+
+        class CatalogService:
+            pass
+
+        def func_with_service(
+            query: str,
+            service: CatalogService = Inject[CatalogService],
+        ) -> str:
+            """Function with Inject default parameter."""
+            return query
+
+        tool_node = ToolNode([func_with_service])
+        tools = tool_node.get_local_tool()
+
+        assert len(tools) == 1
+        params = tools[0]["function"]["parameters"]
+
+        assert "query" in params["properties"]
+        assert "service" not in params["properties"]
 
     def test_annotation_to_schema_primitives(self):
         """Test annotation to schema conversion for primitive types."""

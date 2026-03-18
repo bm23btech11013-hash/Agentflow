@@ -14,7 +14,7 @@ from __future__ import annotations
 import inspect
 import typing as t
 
-from .constants import INJECTABLE_PARAMS
+from .constants import is_injected_param
 
 
 class SchemaMixin:
@@ -204,7 +204,7 @@ class SchemaMixin:
                 ):
                     continue
 
-                if p_name in INJECTABLE_PARAMS:
+                if is_injected_param(p_name, p):
                     continue
 
                 annotation = p.annotation if p.annotation is not inspect._empty else str

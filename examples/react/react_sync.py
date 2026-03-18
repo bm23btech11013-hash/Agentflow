@@ -95,7 +95,6 @@ app = graph.compile(
     checkpointer=checkpointer,
 )
 
-
 # now run it
 
 inp = {"messages": [Message.text_message("Please call the get_weather function for New York City")]}

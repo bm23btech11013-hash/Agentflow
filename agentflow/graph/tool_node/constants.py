@@ -1,4 +1,4 @@
-"""Constants for ToolNode package.
+"""Constants and helpers for ToolNode package.
 
 This module defines constants used throughout the ToolNode implementation,
 particularly parameter names that are automatically injected by the TAF
@@ -30,6 +30,11 @@ Note:
     schema since they're not user-provided arguments.
 """
 
+from __future__ import annotations
+
+import inspect
+
+
 INJECTABLE_PARAMS = {
     "tool_call_id",
     "state",
@@ -41,3 +46,23 @@ INJECTABLE_PARAMS = {
     "store",
     "task_manager",
 }
+
+
+def has_injected_default(param: inspect.Parameter) -> bool:
+    """Return True when a parameter default is an InjectQ sentinel.
+
+    Tool signatures may use ``Inject[Service]`` defaults for DI-only parameters.
+    Those defaults must never be exposed in tool schemas or user-facing arg lists.
+    """
+    if param.default is inspect._empty:
+        return False
+
+    try:
+        return "Inject" in str(type(param.default))
+    except Exception:
+        return False
+
+
+def is_injected_param(param_name: str, param: inspect.Parameter) -> bool:
+    """Return True when a parameter is framework- or DI-injected."""
+    return param_name in INJECTABLE_PARAMS or has_injected_default(param)

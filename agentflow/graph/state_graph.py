@@ -173,7 +173,7 @@ class StateGraph[StateT: AgentState]:
         # Allow async method also
         self._container.bind_factory(
             "generated_id",
-            lambda: self._id_generator.generate(),
+            self._id_generator.generate,
         )
 
         # Save BackgroundTaskManager
