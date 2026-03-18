@@ -677,7 +677,10 @@ class MCPMixin:
     async def _get_mcp_tool(self, tags: set[str] | None = None) -> list[dict]:
         """Fetch tools from the MCP client, optionally filtering by tags."""
         tools: list[dict] = []
-        if self._client:
+        if not self._client:
+            return tools
+        
+        try:
             async with self._client:
                 res = await self._client.ping()
                 if not res:
@@ -702,6 +705,10 @@ class MCPMixin:
                             },
                         }
                     )
+        except Exception as e:  # pragma: no cover - network/optional
+                logger.exception("Failed to fetch MCP tools: %s", e)
+
+            
         return tools
 
     async def _mcp_execute(  # noqa: PLR0915

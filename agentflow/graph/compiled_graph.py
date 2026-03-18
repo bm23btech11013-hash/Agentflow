@@ -141,6 +141,12 @@ class CompiledGraph[StateT: AgentState]:
         config: dict[str, Any] | None,
         is_stream: bool = False,
     ) -> dict[str, Any]:
+        if not config:
+            raise ValueError("Config dictionary is required for execution")
+
+        if "thread_id" not in config:
+            raise ValueError("Config must include 'thread_id' for execution")
+
         cfg = config or {}
         if "is_stream" not in cfg:
             cfg["is_stream"] = is_stream

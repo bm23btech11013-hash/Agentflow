@@ -343,7 +343,7 @@ class Agent(BaseAgent):
 
             # Try to access context_manager to check if it's actually None (InjectQ proxy)
             try:
-                new_state = await context_manager.trim_context(state)
+                new_state = await context_manager.atrim_context(state)
                 logger.debug("Context trimmed using context manager")
                 return new_state
             except AttributeError:
