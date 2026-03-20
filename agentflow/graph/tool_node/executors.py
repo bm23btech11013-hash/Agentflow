@@ -485,7 +485,7 @@ class LocalExecMixin:
 
             return {
                 "state": state,
-                "message": Message.tool_message(
+                "messages": Message.tool_message(
                     content=[
                         ToolResultBlock(
                             call_id=tool_call_id,

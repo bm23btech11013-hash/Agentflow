@@ -26,7 +26,6 @@ from agentflow.state import AgentState, Message, ErrorBlock
 from agentflow.state.message_block import RemoteToolCallBlock
 from agentflow.state.stream_chunks import StreamChunk, StreamEvent
 from agentflow.utils import END, ResponseGranularity, add_messages
-from agentflow.utils.command import Command
 from .heandler_utils import (
     check_and_handle_interrupt,
     check_interrupted,

@@ -424,7 +424,7 @@ class ToolNode(
                     )
                 ]
             elif isinstance(res, dict):
-                msg = res.get("message")
+                msg = res.get("messages")
                 if isinstance(msg, Message):
                     event.data["message"] = msg.model_dump()
                     event.content_blocks = [
@@ -606,7 +606,7 @@ class ToolNode(
                     ToolResultBlock(call_id=tool_call_id, output=result.model_dump())
                 ]
             elif isinstance(result, dict):
-                msg = result.get("message")
+                msg = result.get("messages")
                 if isinstance(msg, Message):
                     event.data["message"] = msg.model_dump()
                     event.content_blocks = [

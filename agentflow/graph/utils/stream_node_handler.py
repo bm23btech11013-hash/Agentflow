@@ -201,7 +201,7 @@ class StreamNodeHandler(BaseLoggingMixin):
         last_message: Message,
         state: "AgentState",
         config: dict[str, Any],
-    ) -> AsyncIterable[Message]:
+    ) -> AsyncIterable[Message | dict[str, Any] | StreamChunk | Command]:
         logger.debug("Node '%s' calling tools from message", self.name)
         if (
             hasattr(last_message, "tools_calls")
@@ -316,6 +316,137 @@ class StreamNodeHandler(BaseLoggingMixin):
                 )
 
         return input_data
+
+    def _get_last_tool_message(self, state: AgentState) -> Message:
+        """Return the latest context message required for tool execution."""
+        if state.context and len(state.context) > 0:
+            return state.context[-1]
+
+        error_msg = "No context available for tool execution"
+        logger.error("Node '%s': %s", self.name, error_msg)
+        raise NodeError(
+            message=error_msg,
+            error_code="NODE_003",
+            context={"node_name": self.name},
+        )
+
+    def _merge_tool_state(self, target_state: AgentState, tool_state: AgentState) -> None:
+        """Merge tool-produced state fields into the target state."""
+        for field_name in tool_state.model_fields:
+            if field_name in ("context", "context_summary", "execution_meta"):
+                continue
+            setattr(target_state, field_name, getattr(tool_state, field_name))
+
+    def _extract_tool_messages(self, payload: dict[str, Any]) -> list[Message]:
+        """Extract tool messages from either legacy or normalized payload keys."""
+        message_payload = payload.get("messages", payload.get("message"))
+
+        if isinstance(message_payload, Message):
+            return [message_payload]
+        if isinstance(message_payload, list):
+            return [item for item in message_payload if isinstance(item, Message)]
+        return []
+
+    def _collect_tool_stream_dict(
+        self,
+        item: dict[str, Any],
+        merged_state: AgentState,
+        collected_messages: list[Message],
+    ) -> tuple[AgentState, bool]:
+        """Merge streamed tool state updates and accumulate associated messages."""
+        has_state_update = False
+        tool_state = item.get("state")
+
+        if isinstance(tool_state, AgentState):
+            self._merge_tool_state(merged_state, tool_state)
+            has_state_update = True
+
+        for message in self._extract_tool_messages(item):
+            if message not in collected_messages:
+                collected_messages.append(message)
+
+        return merged_state, has_state_update
+
+    async def _stream_tool_node(
+        self,
+        state: AgentState,
+        config: dict[str, Any],
+    ) -> AsyncGenerator[dict[str, Any] | Message | StreamChunk | Command]:
+        """Execute a ToolNode and emit normalized streaming payloads."""
+        logger.debug("Node '%s' is a ToolNode, executing tool calls", self.name)
+        last_message = self._get_last_tool_message(state)
+        logger.debug("Node '%s' processing tool calls from last message", self.name)
+
+        result = self._call_tools(
+            last_message,
+            state,
+            config,
+        )
+
+        collected_messages: list[Message] = []
+        merged_state = state
+        has_state_update = False
+        command_goto: str | None = None
+
+        async for item in result:
+            if isinstance(item, Command):
+                command_goto = item.goto
+                yield item
+                continue
+
+            if isinstance(item, dict):
+                merged_state, did_update = self._collect_tool_stream_dict(
+                    item,
+                    merged_state,
+                    collected_messages,
+                )
+                has_state_update = has_state_update or did_update
+                continue
+
+            if isinstance(item, StreamChunk):
+                yield item
+                continue
+
+            if isinstance(item, Message):
+                if item not in collected_messages:
+                    collected_messages.append(item)
+                yield item
+
+        if command_goto is not None or has_state_update:
+            yield {
+                "is_non_streaming": True,
+                "state": merged_state,
+                "messages": collected_messages,
+                "next_node": command_goto,
+            }
+
+    async def _stream_by_node_type(
+        self,
+        state: AgentState,
+        config: dict[str, Any],
+        callback_mgr: CallbackManager,
+    ) -> AsyncGenerator[dict[str, Any] | Message | StreamChunk | Command]:
+        """Dispatch streaming execution to the appropriate node implementation."""
+        from agentflow.graph.agent import Agent
+        from agentflow.graph.base_agent import BaseAgent
+
+        if isinstance(self.func, Agent | BaseAgent):
+            logger.debug("Node '%s' is an Agent instance, executing agent streaming", self.name)
+            async for item in self._call_agent_node(state, config):
+                yield item
+            return
+
+        if isinstance(self.func, ToolNode):
+            async for item in self._stream_tool_node(state, config):
+                yield item
+            return
+
+        async for item in self._call_normal_node(
+            state,
+            config,
+            callback_mgr,
+        ):
+            yield item
 
     async def _call_normal_node(  # noqa: PLR0912, PLR0915
         self,
@@ -601,7 +732,7 @@ class StreamNodeHandler(BaseLoggingMixin):
         config: dict[str, Any],
         state: AgentState,
         callback_mgr: CallbackManager = Inject[CallbackManager],
-    ) -> AsyncGenerator[dict[str, Any] | Message | StreamChunk]:
+    ) -> AsyncGenerator[dict[str, Any] | Message | StreamChunk | Command]:
         """Execute the node function with streaming output and callback support.
 
         Handles ToolNode, Agent, and regular function nodes, yielding incremental results
@@ -642,108 +773,12 @@ class StreamNodeHandler(BaseLoggingMixin):
         # ToolNode will yield events from its own stream method
 
         try:
-            from agentflow.graph.agent import Agent
-            from agentflow.graph.base_agent import BaseAgent
-
-            if isinstance(self.func, Agent | BaseAgent):
-                logger.debug("Node '%s' is an Agent instance, executing agent streaming", self.name)
-                result = self._call_agent_node(
-                    state,
-                    config,
-                )
-                async for item in result:
-                    yield item
-            elif isinstance(self.func, ToolNode):
-                logger.debug("Node '%s' is a ToolNode, executing tool calls", self.name)
-                # This is tool execution - handled separately in ToolNode
-                if state.context and len(state.context) > 0:
-                    last_message = state.context[-1]
-                    logger.debug("Node '%s' processing tool calls from last message", self.name)
-                    result = self._call_tools(
-                        last_message,
-                        state,
-                        config,
-                    )
-
-                    # Collect results to handle state merging and Command/handoff
-                    collected_messages: list[Message] = []
-                    merged_state = state
-                    has_state_update = False
-                    has_command = False
-                    command_goto: str | None = None
-
-                    async for item in result:
-                        if isinstance(item, Command):
-                            # Handoff detected — yield and stop
-                            has_command = True
-                            command_goto = item.goto
-                            yield item
-                        elif isinstance(item, dict):
-                            # State update dict from ToolResult
-                            has_state_update = True
-                            if "state" in item:
-                                tool_state = item["state"]
-                                if isinstance(tool_state, AgentState):
-                                    for field_name in tool_state.model_fields:
-                                        if field_name in (
-                                            "context",
-                                            "context_summary",
-                                            "execution_meta",
-                                        ):
-                                            continue
-                                        setattr(
-                                            merged_state,
-                                            field_name,
-                                            getattr(tool_state, field_name),
-                                        )
-                            if "message" in item:
-                                msg = item["message"]
-                                if isinstance(msg, Message):
-                                    if msg not in collected_messages:
-                                        collected_messages.append(msg)
-                                elif isinstance(msg, list):
-                                    collected_messages.extend(msg)
-                        elif isinstance(item, StreamChunk):
-                            yield item
-                        elif isinstance(item, Message):
-                            if item not in collected_messages:
-                                collected_messages.append(item)
-                            yield item
-
-                    if has_command:
-                        # For handoff, still emit final state info for stream_handler
-                        yield {
-                            "is_non_streaming": True,
-                            "state": merged_state,
-                            "messages": collected_messages,
-                            "next_node": command_goto,
-                        }
-                    elif has_state_update:
-                        # Emit merged state result for stream_handler to pick up
-                        yield {
-                            "is_non_streaming": True,
-                            "state": merged_state,
-                            "messages": collected_messages,
-                            "next_node": None,
-                        }
-                else:
-                    # No context, return available tools
-                    error_msg = "No context available for tool execution"
-                    logger.error("Node '%s': %s", self.name, error_msg)
-                    raise NodeError(
-                        message=error_msg,
-                        error_code="NODE_003",
-                        context={"node_name": self.name},
-                    )
-
-            else:
-                result = self._call_normal_node(
-                    state,
-                    config,
-                    callback_mgr,
-                )
-                async for item in result:
-                    yield item
+            async for item in self._stream_by_node_type(
+                state,
+                config,
+                callback_mgr,
+            ):
+                yield item
 
             logger.info("Node '%s' execution completed successfully", self.name)
         except Exception as e:

@@ -199,6 +199,114 @@ class InvokeNodeHandler(BaseLoggingMixin):
             self._signature_cache[func] = inspect.signature(func)
         return self._signature_cache[func]
 
+    def _get_last_tool_message(self, state: AgentState) -> Message:
+        """Return the latest context message required for tool execution."""
+        if state.context and len(state.context) > 0:
+            return state.context[-1]
+
+        error_msg = "No context available for tool execution"
+        logger.error("Node '%s': %s", self.name, error_msg)
+        raise NodeError(
+            message=error_msg,
+            error_code="NODE_003",
+            context={"node_name": self.name},
+        )
+
+    def _merge_tool_state(self, target_state: AgentState, tool_state: AgentState) -> None:
+        """Merge tool-produced state fields into the target state."""
+        for field_name in tool_state.model_fields:
+            if field_name in ("context", "context_summary", "execution_meta"):
+                continue
+            setattr(target_state, field_name, getattr(tool_state, field_name))
+
+    def _extract_tool_messages(self, result_item: dict[str, Any]) -> list[Message]:
+        """Extract tool messages from either legacy or normalized payload keys."""
+        payload = result_item.get("messages", result_item.get("message"))
+
+        if isinstance(payload, Message):
+            return [payload]
+        if isinstance(payload, list):
+            return [item for item in payload if isinstance(item, Message)]
+        return []
+
+    def _merge_tool_results(
+        self,
+        result: list[Message | dict[str, Any]] | Command,
+        state: AgentState,
+    ) -> list[Message | dict[str, Any]] | Command | dict[str, Any]:
+        """Normalize mixed ToolNode results into a single processable payload."""
+        if isinstance(result, Command) or not isinstance(result, list):
+            return result
+
+        if not any(isinstance(item, dict) for item in result):
+            return result
+
+        merged_result: dict[str, Any] = {
+            "state": state,
+            "messages": [],
+            "next_node": None,
+        }
+
+        for item in result:
+            if isinstance(item, dict):
+                tool_state = item.get("state")
+                if isinstance(tool_state, AgentState):
+                    self._merge_tool_state(merged_result["state"], tool_state)
+                merged_result["messages"].extend(self._extract_tool_messages(item))
+            elif isinstance(item, Message):
+                merged_result["messages"].append(item)
+
+        return merged_result
+
+    async def _invoke_tool_node(
+        self,
+        state: AgentState,
+        config: dict[str, Any],
+    ) -> list[Message | dict[str, Any]] | dict[str, Any] | Command:
+        """Execute a ToolNode and normalize its result to the standard node payload."""
+        logger.debug("Node '%s' is a ToolNode, executing tool calls", self.name)
+        last_message = self._get_last_tool_message(state)
+        logger.debug("Node '%s' processing tool calls from last message", self.name)
+
+        tool_result = await self._call_tools(
+            last_message,
+            state,
+            config,
+        )
+        normalized_result = self._merge_tool_results(tool_result, state)
+
+        if isinstance(normalized_result, Command):
+            return normalized_result
+
+        return normalized_result
+
+    async def _invoke_by_node_type(
+        self,
+        state: AgentState,
+        config: dict[str, Any],
+        callback_mgr: CallbackManager,
+    ) -> dict[str, Any] | list[Message] | Command:
+        """Dispatch node execution to the appropriate implementation."""
+        from agentflow.graph.agent import Agent
+        from agentflow.graph.base_agent import BaseAgent
+
+        if isinstance(self.func, Agent | BaseAgent):
+            logger.debug("Node '%s' is an Agent instance, executing agent", self.name)
+            return await self._call_agent_node(
+                state,
+                config,
+                callback_mgr,
+            )
+
+        if isinstance(self.func, ToolNode):
+            return await self._invoke_tool_node(state, config)
+
+        return await self._call_normal_node(
+            state,
+            config,
+            callback_mgr,
+        )
+
     def _prepare_input_data(
         self,
         state: "AgentState",
@@ -543,99 +651,11 @@ class InvokeNodeHandler(BaseLoggingMixin):
         )
 
         try:
-            # Import Agent here to avoid circular dependency
-            from agentflow.graph.agent import Agent
-            from agentflow.graph.base_agent import BaseAgent
-
-            if isinstance(self.func, Agent | BaseAgent):
-                logger.debug("Node '%s' is an Agent instance, executing agent", self.name)
-                result = await self._call_agent_node(
-                    state,
-                    config,
-                    callback_mgr,
-                )
-            elif isinstance(self.func, ToolNode):
-                logger.debug("Node '%s' is a ToolNode, executing tool calls", self.name)
-                # This is tool execution - handled separately in ToolNode
-                if state.context and len(state.context) > 0:
-                    last_message = state.context[-1]
-                    logger.debug("Node '%s' processing tool calls from last message", self.name)
-                    result = await self._call_tools(
-                        last_message,
-                        state,
-                        config,
-                    )
-
-                    # Merge tool results: tools can return Message or dict (from ToolResult)
-                    # Dict results contain {"state": updated_state, "messages": Message}
-                    # We need to merge all results into a single consistent format
-                    if not isinstance(result, Command) and isinstance(result, list):
-                        has_dict_result = any(isinstance(r, dict) for r in result)
-
-                        if has_dict_result:
-                            merged_result: dict[str, Any] = {
-                                "state": state,
-                                "messages": [],
-                                "next_node": None,
-                            }
-
-                            for r in result:
-                                if isinstance(r, dict):
-                                    if "state" in r:
-                                        # Apply state field updates from each tool
-                                        tool_state = r["state"]
-                                        if isinstance(tool_state, AgentState):
-                                            for field_name in tool_state.model_fields:
-                                                if field_name in (
-                                                    "context",
-                                                    "context_summary",
-                                                    "execution_meta",
-                                                ):
-                                                    continue
-                                                setattr(
-                                                    merged_result["state"],
-                                                    field_name,
-                                                    getattr(tool_state, field_name),
-                                                )
-                                    if "message" in r:
-                                        msg = r["message"]
-                                        if isinstance(msg, list):
-                                            merged_result["messages"].extend(msg)
-                                        elif isinstance(msg, Message):
-                                            merged_result["messages"].append(msg)
-                                elif isinstance(r, Message):
-                                    merged_result["messages"].append(r)
-
-                            result = merged_result
-
-                    # now I can convert this to the standard format of
-                    # {"state": new_state, "messages": messages, "next_node": next_node}
-                    messages = []
-                    new_state, messages, next_node = await process_node_result(
-                        result, state, messages
-                    )
-                    result = {
-                        "state": new_state,
-                        "messages": messages,
-                        "next_node": next_node,
-                    }
-
-                else:
-                    # No context, return available tools
-                    error_msg = "No context available for tool execution"
-                    logger.error("Node '%s': %s", self.name, error_msg)
-                    raise NodeError(
-                        message=error_msg,
-                        error_code="NODE_003",
-                        context={"node_name": self.name},
-                    )
-
-            else:
-                result = await self._call_normal_node(
-                    state,
-                    config,
-                    callback_mgr,
-                )
+            result = await self._invoke_by_node_type(
+                state,
+                config,
+                callback_mgr,
+            )
 
             logger.info("Node '%s' execution completed successfully", self.name)
             # we are flattening the result here because we want to return

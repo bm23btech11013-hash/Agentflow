@@ -23,7 +23,6 @@ from agentflow.state import AgentState, Message
 from agentflow.state.message_block import RemoteToolCallBlock
 from agentflow.utils import END, ResponseGranularity
 from agentflow.state.reducers import add_messages
-from agentflow.utils.command import Command
 
 from .heandler_utils import (
     check_and_handle_interrupt,
