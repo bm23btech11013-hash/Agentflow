@@ -73,6 +73,7 @@ class InvocationType(str, Enum):
     TOOL = "tool"
     MCP = "mcp"
     INPUT_VALIDATION = "input_validation"
+    SKILL = "skill"
 
 
 @dataclass
@@ -192,18 +193,21 @@ class CallbackManager:
             InvocationType.TOOL: [],
             InvocationType.MCP: [],
             InvocationType.INPUT_VALIDATION: [],
+            InvocationType.SKILL: [],
         }
         self._after_callbacks: dict[InvocationType, list[AfterInvokeCallbackType]] = {
             InvocationType.AI: [],
             InvocationType.TOOL: [],
             InvocationType.MCP: [],
             InvocationType.INPUT_VALIDATION: [],
+            InvocationType.SKILL: [],
         }
         self._error_callbacks: dict[InvocationType, list[OnErrorCallbackType]] = {
             InvocationType.AI: [],
             InvocationType.TOOL: [],
             InvocationType.MCP: [],
             InvocationType.INPUT_VALIDATION: [],
+            InvocationType.SKILL: [],
         }
         # Validator registry
         self._validators: list[BaseValidator] = []
