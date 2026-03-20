@@ -57,6 +57,59 @@ def _convert_dict(message: Message) -> dict[str, Any] | None:
     return {"role": message.role, "content": message.text()}
 
 
+def _interpolate_system_prompts(
+    system_prompts: list[dict[str, Any]],
+    state: Union["AgentState", None],
+) -> list[dict[str, Any]]:
+    """Interpolate state variables into system prompt content.
+
+    Supports placeholders like {field_name} in system prompt strings.
+    Uses model_dump() to get all state fields for interpolation.
+
+    Args:
+        system_prompts: List of system prompt dicts with "role" and "content".
+        state: Current agent state with custom fields.
+
+    Returns:
+        List of system prompts with interpolated content.
+    """
+    if state is None:
+        return system_prompts
+
+    interpolated = []
+    state_dict = state.model_dump()
+
+    for prompt in system_prompts:
+        if not isinstance(prompt.get("content"), str):
+            # Non-string content (e.g., multimodal), pass through as-is
+            interpolated.append(prompt)
+            continue
+
+        content = prompt["content"]
+        try:
+            # Interpolate placeholders with state variables
+            interpolated_content = content.format(**state_dict)
+            interpolated.append({**prompt, "content": interpolated_content})
+        except KeyError as e:
+            # Missing field in state - log warning and use original
+            logger.warning(
+                "Failed to interpolate system prompt: missing field %s. "
+                "Using original prompt without interpolation.",
+                e,
+            )
+            interpolated.append(prompt)
+        except (ValueError, IndexError) as e:
+            # Invalid format string or other formatting issues
+            logger.warning(
+                "Failed to interpolate system prompt due to formatting error: %s. "
+                "Using original prompt without interpolation.",
+                e,
+            )
+            interpolated.append(prompt)
+
+    return interpolated
+
+
 def convert_messages(
     system_prompts: list[dict[str, Any]],
     state: Union["AgentState", None] = None,
@@ -81,8 +134,11 @@ def convert_messages(
         logger.error("System prompts are None")
         raise ValueError("System prompts cannot be None")
 
+    # Interpolate state variables into system prompts
+    interpolated_prompts = _interpolate_system_prompts(system_prompts, state)
+
     res = []
-    res += system_prompts
+    res += interpolated_prompts
 
     if state and state.context_summary:
         summary = {

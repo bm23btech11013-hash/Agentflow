@@ -17,7 +17,7 @@ class AgentGoogleMixin:
 
     def _convert_to_google_format(self, messages: list[dict[str, Any]]) -> tuple[str | None, list]:
         """Convert chat-completion style messages into Google GenAI content objects."""
-        from google.genai import types  # noqa: PLC0415
+        from google.genai import types
 
         system_instruction = None
         google_contents: list[types.Content] = []
@@ -97,7 +97,7 @@ class AgentGoogleMixin:
 
     def _convert_tools_to_google_format(self, tools: list) -> list:
         """Convert OpenAI-style tool definitions into Google FunctionDeclarations."""
-        from google.genai import types  # noqa: PLC0415
+        from google.genai import types
 
         google_tools = []
         for tool in tools:
@@ -119,7 +119,7 @@ class AgentGoogleMixin:
         call_kwargs: dict[str, Any],
     ) -> Any:
         """Build a Google GenerateContentConfig instance."""
-        from google.genai import types  # noqa: PLC0415
+        from google.genai import types
 
         config_kwargs = {}
 

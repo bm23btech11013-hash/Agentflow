@@ -72,7 +72,7 @@ class AgentProviderMixin:
         """Create a native SDK client for the selected provider."""
         if provider == "openai":
             try:
-                from openai import AsyncOpenAI  # noqa: PLC0415
+                from openai import AsyncOpenAI
             except ImportError as exc:
                 raise ImportError(
                     "openai SDK is required for OpenAI provider. "
@@ -98,7 +98,7 @@ class AgentProviderMixin:
 
         if provider == "google":
             try:
-                from google import genai  # noqa: PLC0415
+                from google import genai
             except ImportError as exc:
                 raise ImportError(
                     "google-genai SDK is required for Google provider. "

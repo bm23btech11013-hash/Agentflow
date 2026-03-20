@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
 from typing import Any
 
 from injectq import Inject, InjectQ
@@ -123,6 +122,7 @@ class AgentExecutionMixin:
         container = InjectQ.get_instance()
 
         state = await self._trim_context(state)
+
         messages = convert_messages(
             system_prompts=self.system_prompt,
             state=state,

@@ -60,7 +60,7 @@ class AgentOpenAIMixin:
 
         raise ValueError(f"Unsupported output_type '{self.output_type}' for OpenAI provider")
 
-    async def _call_openai_responses(
+    async def _call_openai_responses(  # noqa: PLR0912
         self,
         messages: list[dict[str, Any]],
         tools: list | None = None,
