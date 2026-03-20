@@ -85,7 +85,7 @@ class StreamNodeHandler(BaseLoggingMixin):
         tool_call: dict[str, Any],
         state: AgentState,
         config: dict[str, Any],
-    ) -> AsyncIterable[Message | StreamChunk]:
+    ) -> AsyncIterable[Message | dict[str, Any] | StreamChunk]:
         function_name = tool_call.get("function", {}).get("name", "")
         function_args: dict = json.loads(tool_call.get("function", {}).get("arguments", "{}"))
         tool_call_id = tool_call.get("id", "")
@@ -134,40 +134,67 @@ class StreamNodeHandler(BaseLoggingMixin):
         )
 
         async for result in tool_result_gen:
-            yield result
-            is_error = ErrorBlock in result.content if isinstance(result, Message) else False
-            if is_error:
-                yield StreamChunk(
-                    event=StreamEvent.ERROR,
-                    data={
-                        "status": "tool_invoked",
-                        "tool_name": function_name,
-                        "args": function_args,
-                        "tool_call_id": tool_call_id,
-                        "node": self.name,
-                        "reason": "Tool execution resulted in error",
-                        "error": next(
-                            block for block in result.content if isinstance(block, ErrorBlock)
-                        ).message,
-                    },
-                    thread_id=config.get("thread_id"),
-                    run_id=config.get("run_id"),
+            if isinstance(result, dict):
+                # Dict result from ToolResult (state update) — yield the message
+                # and pass the dict through so the consumer can handle state merging
+                msg = result.get("messages")
+                if isinstance(msg, Message):
+                    yield msg
+                    yield StreamChunk(
+                        event=StreamEvent.MESSAGE,
+                        message=msg,
+                        data={
+                            "status": "tool_invoked",
+                            "tool_name": function_name,
+                            "args": function_args,
+                            "tool_call_id": tool_call_id,
+                            "node": self.name,
+                        },
+                        thread_id=config.get("thread_id"),
+                        run_id=config.get("run_id"),
+                    )
+                # Yield the raw dict so upstream can merge state
+                yield result
+            elif isinstance(result, Message):
+                yield result
+                is_error = (
+                    any(isinstance(block, ErrorBlock) for block in result.content)
+                    if isinstance(result.content, list)
+                    else False
                 )
-
+                if is_error:
+                    yield StreamChunk(
+                        event=StreamEvent.ERROR,
+                        data={
+                            "status": "tool_invoked",
+                            "tool_name": function_name,
+                            "args": function_args,
+                            "tool_call_id": tool_call_id,
+                            "node": self.name,
+                            "reason": "Tool execution resulted in error",
+                            "error": next(
+                                block for block in result.content if isinstance(block, ErrorBlock)
+                            ).message,
+                        },
+                        thread_id=config.get("thread_id"),
+                        run_id=config.get("run_id"),
+                    )
+                else:
+                    yield StreamChunk(
+                        event=StreamEvent.MESSAGE,
+                        message=result,
+                        data={
+                            "status": "tool_invoked",
+                            "tool_name": function_name,
+                            "args": function_args,
+                            "tool_call_id": tool_call_id,
+                            "node": self.name,
+                        },
+                        thread_id=config.get("thread_id"),
+                        run_id=config.get("run_id"),
+                    )
             else:
-                yield StreamChunk(
-                    event=StreamEvent.MESSAGE,
-                    message=result,
-                    data={
-                        "status": "tool_invoked",
-                        "tool_name": function_name,
-                        "args": function_args,
-                        "tool_call_id": tool_call_id,
-                        "node": self.name,
-                    },
-                    thread_id=config.get("thread_id"),
-                    run_id=config.get("run_id"),
-                )
+                yield result
 
     async def _call_tools(
         self,
@@ -251,8 +278,26 @@ class StreamNodeHandler(BaseLoggingMixin):
             "config": config,
         }
 
-        # # Get injectable parameters to determine which ones to exclude from manual passing
-        # # Prepare function arguments (excluding injectable parameters)
+        # Collect all required parameters (excluding *args/**kwargs)
+        required_params = []
+        for param_name, param in sig.parameters.items():
+            if param.kind in (
+                inspect.Parameter.VAR_POSITIONAL,
+                inspect.Parameter.VAR_KEYWORD,
+            ):
+                continue
+            if param.default is inspect.Parameter.empty:
+                required_params.append((param_name, param))
+
+        # If function has exactly one required parameter and it's not 'state' or 'config',
+        # assume it should receive the state (common pattern for simple lambdas like lambda s: s)
+        if len(required_params) == 1:
+            param_name, param = required_params[0]
+            if param_name not in ["state", "config"]:
+                input_data[param_name] = state
+                return input_data
+
+        # Otherwise, handle standard named parameters
         for param_name, param in sig.parameters.items():
             # Skip *args/**kwargs
             if param.kind in (
@@ -619,9 +664,68 @@ class StreamNodeHandler(BaseLoggingMixin):
                         state,
                         config,
                     )
+
+                    # Collect results to handle state merging and Command/handoff
+                    collected_messages: list[Message] = []
+                    merged_state = state
+                    has_state_update = False
+                    has_command = False
+                    command_goto: str | None = None
+
                     async for item in result:
-                        yield item
-                    # Check if last message has tool calls to execute
+                        if isinstance(item, Command):
+                            # Handoff detected — yield and stop
+                            has_command = True
+                            command_goto = item.goto
+                            yield item
+                        elif isinstance(item, dict):
+                            # State update dict from ToolResult
+                            has_state_update = True
+                            if "state" in item:
+                                tool_state = item["state"]
+                                if isinstance(tool_state, AgentState):
+                                    for field_name in tool_state.model_fields:
+                                        if field_name in (
+                                            "context",
+                                            "context_summary",
+                                            "execution_meta",
+                                        ):
+                                            continue
+                                        setattr(
+                                            merged_state,
+                                            field_name,
+                                            getattr(tool_state, field_name),
+                                        )
+                            if "message" in item:
+                                msg = item["message"]
+                                if isinstance(msg, Message):
+                                    if msg not in collected_messages:
+                                        collected_messages.append(msg)
+                                elif isinstance(msg, list):
+                                    collected_messages.extend(msg)
+                        elif isinstance(item, StreamChunk):
+                            yield item
+                        elif isinstance(item, Message):
+                            if item not in collected_messages:
+                                collected_messages.append(item)
+                            yield item
+
+                    if has_command:
+                        # For handoff, still emit final state info for stream_handler
+                        yield {
+                            "is_non_streaming": True,
+                            "state": merged_state,
+                            "messages": collected_messages,
+                            "next_node": command_goto,
+                        }
+                    elif has_state_update:
+                        # Emit merged state result for stream_handler to pick up
+                        yield {
+                            "is_non_streaming": True,
+                            "state": merged_state,
+                            "messages": collected_messages,
+                            "next_node": None,
+                        }
                 else:
                     # No context, return available tools
                     error_msg = "No context available for tool execution"

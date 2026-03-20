@@ -84,7 +84,7 @@ class InvokeNodeHandler(BaseLoggingMixin):
         tool_call: dict[str, Any],
         state: AgentState,
         config: dict[str, Any],
-    ) -> Message:
+    ) -> dict[str, Any] | Message:
         """
         Execute a single tool call using the ToolNode.
 
@@ -94,7 +94,7 @@ class InvokeNodeHandler(BaseLoggingMixin):
             config (dict): Node configuration.
 
         Returns:
-            Message: Resulting message from tool execution.
+            dict[str, Any]: Resulting data from tool execution.
         """
         function_name = tool_call.get("function", {}).get("name", "")
         function_args: dict = json.loads(tool_call.get("function", {}).get("arguments", "{}"))
@@ -125,7 +125,7 @@ class InvokeNodeHandler(BaseLoggingMixin):
         last_message: Message,
         state: "AgentState",
         config: dict[str, Any],
-    ) -> list[Message] | Command:
+    ) -> list[Message | dict[str, Any]] | Command:
         """
         Execute all tool calls present in the last message.
 
@@ -135,13 +135,13 @@ class InvokeNodeHandler(BaseLoggingMixin):
             config (dict): Node configuration.
 
         Returns:
-            list[Message]: List of messages from tool executions.
+            dict[str, Any] | list[Message] | Command: Resulting data from tool executions.
 
         Raises:
             NodeError: If no tool calls are present.
         """
         logger.debug("Node '%s' calling tools from message", self.name)
-        result: list[Message] = []
+        result: list[Message | dict[str, Any]] = []
         if (
             hasattr(last_message, "tools_calls")
             and last_message.tools_calls
@@ -565,6 +565,49 @@ class InvokeNodeHandler(BaseLoggingMixin):
                         state,
                         config,
                     )
+
+                    # Merge tool results: tools can return Message or dict (from ToolResult)
+                    # Dict results contain {"state": updated_state, "messages": Message}
+                    # We need to merge all results into a single consistent format
+                    if not isinstance(result, Command) and isinstance(result, list):
+                        has_dict_result = any(isinstance(r, dict) for r in result)
+
+                        if has_dict_result:
+                            merged_result: dict[str, Any] = {
+                                "state": state,
+                                "messages": [],
+                                "next_node": None,
+                            }
+
+                            for r in result:
+                                if isinstance(r, dict):
+                                    if "state" in r:
+                                        # Apply state field updates from each tool
+                                        tool_state = r["state"]
+                                        if isinstance(tool_state, AgentState):
+                                            for field_name in tool_state.model_fields:
+                                                if field_name in (
+                                                    "context",
+                                                    "context_summary",
+                                                    "execution_meta",
+                                                ):
+                                                    continue
+                                                setattr(
+                                                    merged_result["state"],
+                                                    field_name,
+                                                    getattr(tool_state, field_name),
+                                                )
+                                    if "message" in r:
+                                        msg = r["message"]
+                                        if isinstance(msg, list):
+                                            merged_result["messages"].extend(msg)
+                                        elif isinstance(msg, Message):
+                                            merged_result["messages"].append(msg)
+                                elif isinstance(r, Message):
+                                    merged_result["messages"].append(r)
+
+                            result = merged_result
+
                 else:
                     # No context, return available tools
                     error_msg = "No context available for tool execution"
@@ -583,7 +626,9 @@ class InvokeNodeHandler(BaseLoggingMixin):
                 )
 
             logger.info("Node '%s' execution completed successfully", self.name)
-            return result
+            # we are flattening the result here because we want to return
+            # a consistent format for both tool and normal nodes
+            return result  # type: ignore
         except Exception as e:
             # This is the final catch-all for node execution errors
             logger.exception("Node '%s' execution failed: %s", self.name, e)

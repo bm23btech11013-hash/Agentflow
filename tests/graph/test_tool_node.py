@@ -251,9 +251,14 @@ class TestToolNode:
             callback_manager=callback_mgr,
         )
 
-        assert isinstance(result, Message)
+        # ToolResult returns a dict with state and messages
+        assert isinstance(result, dict)
+        assert "state" in result
+        assert "messages" in result
         assert state.status == "complete"
-        assert result.content[0].output == "updated"
+        msg = result["messages"]
+        assert isinstance(msg, Message)
+        assert msg.content[0].output == "updated"
 
     @pytest.mark.asyncio
     async def test_invoke_tool_not_found(self):
