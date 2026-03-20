@@ -10,7 +10,14 @@ import typing as t
 from agentflow.adapters.tools import ComposioAdapter
 from agentflow.publisher.events import ContentType, Event, EventModel, EventType
 from agentflow.publisher.publish import publish_event
-from agentflow.state import AgentState, ContentBlock, ErrorBlock, Message, ToolResultBlock
+from agentflow.state import (
+    AgentState,
+    ContentBlock,
+    ErrorBlock,
+    Message,
+    ToolResult,
+    ToolResultBlock,
+)
 from agentflow.utils import CallbackContext, CallbackManager, InvocationType, call_sync_or_async
 
 from .constants import INJECTABLE_PARAMS, has_injected_default
@@ -422,7 +429,11 @@ class LocalExecMixin:
             invocation_type=InvocationType.TOOL,
             node_name="ToolNode",
             function_name=name,
-            metadata={"tool_call_id": tool_call_id, "args": args, "config": config},
+            metadata={
+                "tool_call_id": tool_call_id,
+                "args": args,
+                "config": config,
+            },
         )
 
         fn = self._funcs[name]
@@ -487,6 +498,31 @@ class LocalExecMixin:
                 input_data,
                 result,
             )
+
+            if isinstance(result, ToolResult):
+                # Apply partial state update in-place so the graph sees the new field values
+                if result.state:
+                    for key, value in result.state.items():
+                        if hasattr(state, key):
+                            setattr(state, key, value)
+
+                msg = Message.tool_message(
+                    content=[
+                        ToolResultBlock(
+                            call_id=tool_call_id,
+                            output=result.message,
+                            status="completed",
+                            is_error=False,
+                        )
+                    ],
+                    meta=meta,
+                )
+                event.event_type = EventType.END
+                event.data["message"] = msg.model_dump()
+                event.metadata["status"] = "Internal tool execution complete"
+                event.content_type = [ContentType.TOOL_RESULT, ContentType.MESSAGE]
+                publish_event(event)
+                return msg
 
             if isinstance(result, Message):
                 meta_data = result.metadata or {}

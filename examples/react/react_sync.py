@@ -3,7 +3,7 @@ from dotenv import load_dotenv
 from agentflow.checkpointer import InMemoryCheckpointer
 from agentflow.graph import StateGraph, ToolNode
 from agentflow.graph.agent import Agent
-from agentflow.state import AgentState, Message
+from agentflow.state import AgentState, Message, ToolResult
 from agentflow.utils.constants import END
 
 
@@ -12,10 +12,14 @@ load_dotenv()
 checkpointer = InMemoryCheckpointer()
 
 
+class CustomAgentState(AgentState):
+    jd_name: str = "CustomAgentState"
+
+
 def get_weather(
     location: str,
     tool_call_id: str | None = None,
-    state: AgentState | None = None,
+    state: CustomAgentState | None = None,
 ) -> str:
     """
     Get the current weather for a specific location.
@@ -30,7 +34,23 @@ def get_weather(
     return f"The weather in {location} is sunny"
 
 
-tool_node = ToolNode([get_weather])
+def update_context(
+    state: CustomAgentState,
+    jd_name: str,
+) -> ToolResult:
+    """Update the current jd name in the state and report back to the AI."""
+    return ToolResult(
+        message=f"JD name has been updated to '{jd_name}'.",
+        state={"jd_name": jd_name},
+    )
+
+
+tool_node = ToolNode(
+    [
+        get_weather,
+        update_context,
+    ]
+)
 
 # Create agent with tools
 agent = Agent(

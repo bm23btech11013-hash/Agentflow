@@ -38,6 +38,7 @@ from .reducers import (
     replace_value,
 )
 from .stream_chunks import StreamChunk, StreamEvent
+from .tool_result import ToolResult
 
 
 __all__ = [
@@ -63,6 +64,7 @@ __all__ = [
     "TextBlock",
     "TokenUsages",
     "ToolCallBlock",
+    "ToolResult",
     "ToolResultBlock",
     "VideoBlock",
     "add_messages",

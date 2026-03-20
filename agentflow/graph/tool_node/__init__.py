@@ -8,8 +8,10 @@ This package provides a modularized implementation of ToolNode. Public API:
 Backwards-compatible import path: ``from agentflow.graph.tool_node import ToolNode``
 """
 
-from .base import ToolNode  # re-export
-from .deps import HAS_FASTMCP, HAS_MCP  # re-export
+from agentflow.state.tool_result import ToolResult
+
+from .base import ToolNode
+from .deps import HAS_FASTMCP, HAS_MCP
 
 
-__all__ = ["HAS_FASTMCP", "HAS_MCP", "ToolNode"]
+__all__ = ["HAS_FASTMCP", "HAS_MCP", "ToolNode", "ToolResult"]

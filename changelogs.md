@@ -1,3 +1,9 @@
+Version: 0.6.1 later
+1. Fix Bugs
+2. Reasoning Configuration for Agents
+
+
+
 Version: 0.5.7 later
 1. Fix Bugs
 2. Improved Agent class Now supports tool filtering by tags
