@@ -84,7 +84,7 @@ class InvokeNodeHandler(BaseLoggingMixin):
         tool_call: dict[str, Any],
         state: AgentState,
         config: dict[str, Any],
-    ) -> Message:
+    ) -> dict[str, Any] | Message:
         """
         Execute a single tool call using the ToolNode.
 
@@ -94,7 +94,7 @@ class InvokeNodeHandler(BaseLoggingMixin):
             config (dict): Node configuration.
 
         Returns:
-            Message: Resulting message from tool execution.
+            dict[str, Any]: Resulting data from tool execution.
         """
         function_name = tool_call.get("function", {}).get("name", "")
         function_args: dict = json.loads(tool_call.get("function", {}).get("arguments", "{}"))
@@ -125,7 +125,7 @@ class InvokeNodeHandler(BaseLoggingMixin):
         last_message: Message,
         state: "AgentState",
         config: dict[str, Any],
-    ) -> list[Message] | Command:
+    ) -> list[Message | dict[str, Any]] | Command:
         """
         Execute all tool calls present in the last message.
 
@@ -135,13 +135,13 @@ class InvokeNodeHandler(BaseLoggingMixin):
             config (dict): Node configuration.
 
         Returns:
-            list[Message]: List of messages from tool executions.
+            dict[str, Any] | list[Message] | Command: Resulting data from tool executions.
 
         Raises:
             NodeError: If no tool calls are present.
         """
         logger.debug("Node '%s' calling tools from message", self.name)
-        result: list[Message] = []
+        result: list[Message | dict[str, Any]] = []
         if (
             hasattr(last_message, "tools_calls")
             and last_message.tools_calls
@@ -198,6 +198,114 @@ class InvokeNodeHandler(BaseLoggingMixin):
         if func not in self._signature_cache:
             self._signature_cache[func] = inspect.signature(func)
         return self._signature_cache[func]
+
+    def _get_last_tool_message(self, state: AgentState) -> Message:
+        """Return the latest context message required for tool execution."""
+        if state.context and len(state.context) > 0:
+            return state.context[-1]
+
+        error_msg = "No context available for tool execution"
+        logger.error("Node '%s': %s", self.name, error_msg)
+        raise NodeError(
+            message=error_msg,
+            error_code="NODE_003",
+            context={"node_name": self.name},
+        )
+
+    def _merge_tool_state(self, target_state: AgentState, tool_state: AgentState) -> None:
+        """Merge tool-produced state fields into the target state."""
+        for field_name in tool_state.model_fields:
+            if field_name in ("context", "context_summary", "execution_meta"):
+                continue
+            setattr(target_state, field_name, getattr(tool_state, field_name))
+
+    def _extract_tool_messages(self, result_item: dict[str, Any]) -> list[Message]:
+        """Extract tool messages from either legacy or normalized payload keys."""
+        payload = result_item.get("messages", result_item.get("message"))
+
+        if isinstance(payload, Message):
+            return [payload]
+        if isinstance(payload, list):
+            return [item for item in payload if isinstance(item, Message)]
+        return []
+
+    def _merge_tool_results(
+        self,
+        result: list[Message | dict[str, Any]] | Command,
+        state: AgentState,
+    ) -> list[Message | dict[str, Any]] | Command | dict[str, Any]:
+        """Normalize mixed ToolNode results into a single processable payload."""
+        if isinstance(result, Command) or not isinstance(result, list):
+            return result
+
+        if not any(isinstance(item, dict) for item in result):
+            return result
+
+        merged_result: dict[str, Any] = {
+            "state": state,
+            "messages": [],
+            "next_node": None,
+        }
+
+        for item in result:
+            if isinstance(item, dict):
+                tool_state = item.get("state")
+                if isinstance(tool_state, AgentState):
+                    self._merge_tool_state(merged_result["state"], tool_state)
+                merged_result["messages"].extend(self._extract_tool_messages(item))
+            elif isinstance(item, Message):
+                merged_result["messages"].append(item)
+
+        return merged_result
+
+    async def _invoke_tool_node(
+        self,
+        state: AgentState,
+        config: dict[str, Any],
+    ) -> list[Message | dict[str, Any]] | dict[str, Any] | Command:
+        """Execute a ToolNode and normalize its result to the standard node payload."""
+        logger.debug("Node '%s' is a ToolNode, executing tool calls", self.name)
+        last_message = self._get_last_tool_message(state)
+        logger.debug("Node '%s' processing tool calls from last message", self.name)
+
+        tool_result = await self._call_tools(
+            last_message,
+            state,
+            config,
+        )
+        normalized_result = self._merge_tool_results(tool_result, state)
+
+        if isinstance(normalized_result, Command):
+            return normalized_result
+
+        return normalized_result
+
+    async def _invoke_by_node_type(
+        self,
+        state: AgentState,
+        config: dict[str, Any],
+        callback_mgr: CallbackManager,
+    ) -> dict[str, Any] | list[Message] | Command:
+        """Dispatch node execution to the appropriate implementation."""
+        from agentflow.graph.agent import Agent
+        from agentflow.graph.base_agent import BaseAgent
+
+        if isinstance(self.func, Agent | BaseAgent):
+            logger.debug("Node '%s' is an Agent instance, executing agent", self.name)
+            return await self._call_agent_node(
+                state,
+                config,
+                callback_mgr,
+            )
+
+        if isinstance(self.func, ToolNode):
+            return await self._invoke_tool_node(state, config)
+
+        return await self._call_normal_node(
+            state,
+            config,
+            callback_mgr,
+        )
 
     def _prepare_input_data(
         self,
@@ -543,46 +651,15 @@ class InvokeNodeHandler(BaseLoggingMixin):
         )
 
         try:
-            # Import Agent here to avoid circular dependency
-            from agentflow.graph.agent import Agent
-            from agentflow.graph.base_agent import BaseAgent
-
-            if isinstance(self.func, Agent | BaseAgent):
-                logger.debug("Node '%s' is an Agent instance, executing agent", self.name)
-                result = await self._call_agent_node(
-                    state,
-                    config,
-                    callback_mgr,
-                )
-            elif isinstance(self.func, ToolNode):
-                logger.debug("Node '%s' is a ToolNode, executing tool calls", self.name)
-                # This is tool execution - handled separately in ToolNode
-                if state.context and len(state.context) > 0:
-                    last_message = state.context[-1]
-                    logger.debug("Node '%s' processing tool calls from last message", self.name)
-                    result = await self._call_tools(
-                        last_message,
-                        state,
-                        config,
-                    )
-                else:
-                    # No context, return available tools
-                    error_msg = "No context available for tool execution"
-                    logger.error("Node '%s': %s", self.name, error_msg)
-                    raise NodeError(
-                        message=error_msg,
-                        error_code="NODE_003",
-                        context={"node_name": self.name},
-                    )
-
-            else:
-                result = await self._call_normal_node(
-                    state,
-                    config,
-                    callback_mgr,
-                )
+            result = await self._invoke_by_node_type(
+                state,
+                config,
+                callback_mgr,
+            )
 
             logger.info("Node '%s' execution completed successfully", self.name)
+            # we are flattening the result here because we want to return
+            # a consistent format for both tool and normal nodes
             return result
         except Exception as e:
             # This is the final catch-all for node execution errors

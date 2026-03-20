@@ -1,3 +1,8 @@
+Version 0.6.3 later
+1. Introduced ToolResult for Tool Result
+this way you can update state and also return the result of the tool execution in one step, and it will be used in the next step of the agent execution
+
+
 Version: 0.6.1 later
 1. Fix Bugs
 2. Reasoning Configuration for Agents

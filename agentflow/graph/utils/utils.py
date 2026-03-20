@@ -531,3 +531,15 @@ async def sync_data(
             await checkpointer.aput_messages(config, messages)
 
     return is_context_trimmed
+
+
+# def merge_two_state(
+#     base_state: AgentState,
+#     new_state: AgentState,
+# ) -> AgentState:
+#     """Merge two AgentState objects, only custom attributes updating fields."""
+#     merged_state = copy.deepcopy(base_state)
+#     for key, value in new_state.__dict__.items():
+#         if hasattr(merged_state, key) and value is not None:
+#             setattr(merged_state, key, value)
+#     return merged_state

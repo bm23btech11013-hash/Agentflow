@@ -85,7 +85,7 @@ class StreamNodeHandler(BaseLoggingMixin):
         tool_call: dict[str, Any],
         state: AgentState,
         config: dict[str, Any],
-    ) -> AsyncIterable[Message | StreamChunk]:
+    ) -> AsyncIterable[Message | dict[str, Any] | StreamChunk]:
         function_name = tool_call.get("function", {}).get("name", "")
         function_args: dict = json.loads(tool_call.get("function", {}).get("arguments", "{}"))
         tool_call_id = tool_call.get("id", "")
@@ -134,47 +134,74 @@ class StreamNodeHandler(BaseLoggingMixin):
         )
 
         async for result in tool_result_gen:
-            yield result
-            is_error = ErrorBlock in result.content if isinstance(result, Message) else False
-            if is_error:
-                yield StreamChunk(
-                    event=StreamEvent.ERROR,
-                    data={
-                        "status": "tool_invoked",
-                        "tool_name": function_name,
-                        "args": function_args,
-                        "tool_call_id": tool_call_id,
-                        "node": self.name,
-                        "reason": "Tool execution resulted in error",
-                        "error": next(
-                            block for block in result.content if isinstance(block, ErrorBlock)
-                        ).message,
-                    },
-                    thread_id=config.get("thread_id"),
-                    run_id=config.get("run_id"),
+            if isinstance(result, dict):
+                # Dict result from ToolResult (state update) — yield the message
+                # and pass the dict through so the consumer can handle state merging
+                msg = result.get("messages")
+                if isinstance(msg, Message):
+                    yield msg
+                    yield StreamChunk(
+                        event=StreamEvent.MESSAGE,
+                        message=msg,
+                        data={
+                            "status": "tool_invoked",
+                            "tool_name": function_name,
+                            "args": function_args,
+                            "tool_call_id": tool_call_id,
+                            "node": self.name,
+                        },
+                        thread_id=config.get("thread_id"),
+                        run_id=config.get("run_id"),
+                    )
+                # Yield the raw dict so upstream can merge state
+                yield result
+            elif isinstance(result, Message):
+                yield result
+                is_error = (
+                    any(isinstance(block, ErrorBlock) for block in result.content)
+                    if isinstance(result.content, list)
+                    else False
                 )
-
+                if is_error:
+                    yield StreamChunk(
+                        event=StreamEvent.ERROR,
+                        data={
+                            "status": "tool_invoked",
+                            "tool_name": function_name,
+                            "args": function_args,
+                            "tool_call_id": tool_call_id,
+                            "node": self.name,
+                            "reason": "Tool execution resulted in error",
+                            "error": next(
+                                block for block in result.content if isinstance(block, ErrorBlock)
+                            ).message,
+                        },
+                        thread_id=config.get("thread_id"),
+                        run_id=config.get("run_id"),
+                    )
+                else:
+                    yield StreamChunk(
+                        event=StreamEvent.MESSAGE,
+                        message=result,
+                        data={
+                            "status": "tool_invoked",
+                            "tool_name": function_name,
+                            "args": function_args,
+                            "tool_call_id": tool_call_id,
+                            "node": self.name,
+                        },
+                        thread_id=config.get("thread_id"),
+                        run_id=config.get("run_id"),
+                    )
             else:
-                yield StreamChunk(
-                    event=StreamEvent.MESSAGE,
-                    message=result,
-                    data={
-                        "status": "tool_invoked",
-                        "tool_name": function_name,
-                        "args": function_args,
-                        "tool_call_id": tool_call_id,
-                        "node": self.name,
-                    },
-                    thread_id=config.get("thread_id"),
-                    run_id=config.get("run_id"),
-                )
+                yield result
 
     async def _call_tools(
         self,
         last_message: Message,
         state: "AgentState",
         config: dict[str, Any],
-    ) -> AsyncIterable[Message]:
+    ) -> AsyncIterable[Message | dict[str, Any] | StreamChunk | Command]:
         logger.debug("Node '%s' calling tools from message", self.name)
         if (
             hasattr(last_message, "tools_calls")
@@ -251,8 +278,26 @@ class StreamNodeHandler(BaseLoggingMixin):
             "config": config,
         }
 
-        # # Get injectable parameters to determine which ones to exclude from manual passing
-        # # Prepare function arguments (excluding injectable parameters)
+        # Collect all required parameters (excluding *args/**kwargs)
+        required_params = []
+        for param_name, param in sig.parameters.items():
+            if param.kind in (
+                inspect.Parameter.VAR_POSITIONAL,
+                inspect.Parameter.VAR_KEYWORD,
+            ):
+                continue
+            if param.default is inspect.Parameter.empty:
+                required_params.append((param_name, param))
+
+        # If function has exactly one required parameter and it's not 'state' or 'config',
+        # assume it should receive the state (common pattern for simple lambdas like lambda s: s)
+        if len(required_params) == 1:
+            param_name, param = required_params[0]
+            if param_name not in ["state", "config"]:
+                input_data[param_name] = state
+                return input_data
+
+        # Otherwise, handle standard named parameters
         for param_name, param in sig.parameters.items():
             # Skip *args/**kwargs
             if param.kind in (
@@ -271,6 +316,137 @@ class StreamNodeHandler(BaseLoggingMixin):
                 )
 
         return input_data
+
+    def _get_last_tool_message(self, state: AgentState) -> Message:
+        """Return the latest context message required for tool execution."""
+        if state.context and len(state.context) > 0:
+            return state.context[-1]
+
+        error_msg = "No context available for tool execution"
+        logger.error("Node '%s': %s", self.name, error_msg)
+        raise NodeError(
+            message=error_msg,
+            error_code="NODE_003",
+            context={"node_name": self.name},
+        )
+
+    def _merge_tool_state(self, target_state: AgentState, tool_state: AgentState) -> None:
+        """Merge tool-produced state fields into the target state."""
+        for field_name in tool_state.model_fields:
+            if field_name in ("context", "context_summary", "execution_meta"):
+                continue
+            setattr(target_state, field_name, getattr(tool_state, field_name))
+
+    def _extract_tool_messages(self, payload: dict[str, Any]) -> list[Message]:
+        """Extract tool messages from either legacy or normalized payload keys."""
+        message_payload = payload.get("messages", payload.get("message"))
+
+        if isinstance(message_payload, Message):
+            return [message_payload]
+        if isinstance(message_payload, list):
+            return [item for item in message_payload if isinstance(item, Message)]
+        return []
+
+    def _collect_tool_stream_dict(
+        self,
+        item: dict[str, Any],
+        merged_state: AgentState,
+        collected_messages: list[Message],
+    ) -> tuple[AgentState, bool]:
+        """Merge streamed tool state updates and accumulate associated messages."""
+        has_state_update = False
+        tool_state = item.get("state")
+
+        if isinstance(tool_state, AgentState):
+            self._merge_tool_state(merged_state, tool_state)
+            has_state_update = True
+
+        for message in self._extract_tool_messages(item):
+            if message not in collected_messages:
+                collected_messages.append(message)
+
+        return merged_state, has_state_update
+
+    async def _stream_tool_node(
+        self,
+        state: AgentState,
+        config: dict[str, Any],
+    ) -> AsyncGenerator[dict[str, Any] | Message | StreamChunk | Command]:
+        """Execute a ToolNode and emit normalized streaming payloads."""
+        logger.debug("Node '%s' is a ToolNode, executing tool calls", self.name)
+        last_message = self._get_last_tool_message(state)
+        logger.debug("Node '%s' processing tool calls from last message", self.name)
+
+        result = self._call_tools(
+            last_message,
+            state,
+            config,
+        )
+
+        collected_messages: list[Message] = []
+        merged_state = state
+        has_state_update = False
+        command_goto: str | None = None
+
+        async for item in result:
+            if isinstance(item, Command):
+                command_goto = item.goto
+                yield item
+                continue
+
+            if isinstance(item, dict):
+                merged_state, did_update = self._collect_tool_stream_dict(
+                    item,
+                    merged_state,
+                    collected_messages,
+                )
+                has_state_update = has_state_update or did_update
+                continue
+
+            if isinstance(item, StreamChunk):
+                yield item
+                continue
+
+            if isinstance(item, Message):
+                if item not in collected_messages:
+                    collected_messages.append(item)
+                yield item
+
+        if command_goto is not None or has_state_update:
+            yield {
+                "is_non_streaming": True,
+                "state": merged_state,
+                "messages": collected_messages,
+                "next_node": command_goto,
+            }
+
+    async def _stream_by_node_type(
+        self,
+        state: AgentState,
+        config: dict[str, Any],
+        callback_mgr: CallbackManager,
+    ) -> AsyncGenerator[dict[str, Any] | Message | StreamChunk | Command]:
+        """Dispatch streaming execution to the appropriate node implementation."""
+        from agentflow.graph.agent import Agent
+        from agentflow.graph.base_agent import BaseAgent
+
+        if isinstance(self.func, Agent | BaseAgent):
+            logger.debug("Node '%s' is an Agent instance, executing agent streaming", self.name)
+            async for item in self._call_agent_node(state, config):
+                yield item
+            return
+
+        if isinstance(self.func, ToolNode):
+            async for item in self._stream_tool_node(state, config):
+                yield item
+            return
+
+        async for item in self._call_normal_node(
+            state,
+            config,
+            callback_mgr,
+        ):
+            yield item
 
     async def _call_normal_node(  # noqa: PLR0912, PLR0915
         self,
@@ -556,7 +732,7 @@ class StreamNodeHandler(BaseLoggingMixin):
         config: dict[str, Any],
         state: AgentState,
         callback_mgr: CallbackManager = Inject[CallbackManager],
-    ) -> AsyncGenerator[dict[str, Any] | Message | StreamChunk]:
+    ) -> AsyncGenerator[dict[str, Any] | Message | StreamChunk | Command]:
         """Execute the node function with streaming output and callback support.
 
         Handles ToolNode, Agent, and regular function nodes, yielding incremental results
@@ -597,49 +773,12 @@ class StreamNodeHandler(BaseLoggingMixin):
         # ToolNode will yield events from its own stream method
 
         try:
-            from agentflow.graph.agent import Agent
-            from agentflow.graph.base_agent import BaseAgent
-
-            if isinstance(self.func, Agent | BaseAgent):
-                logger.debug("Node '%s' is an Agent instance, executing agent streaming", self.name)
-                result = self._call_agent_node(
-                    state,
-                    config,
-                )
-                async for item in result:
-                    yield item
-            elif isinstance(self.func, ToolNode):
-                logger.debug("Node '%s' is a ToolNode, executing tool calls", self.name)
-                # This is tool execution - handled separately in ToolNode
-                if state.context and len(state.context) > 0:
-                    last_message = state.context[-1]
-                    logger.debug("Node '%s' processing tool calls from last message", self.name)
-                    result = self._call_tools(
-                        last_message,
-                        state,
-                        config,
-                    )
-                    async for item in result:
-                        yield item
-                    # Check if last message has tool calls to execute
-                else:
-                    # No context, return available tools
-                    error_msg = "No context available for tool execution"
-                    logger.error("Node '%s': %s", self.name, error_msg)
-                    raise NodeError(
-                        message=error_msg,
-                        error_code="NODE_003",
-                        context={"node_name": self.name},
-                    )
-
-            else:
-                result = self._call_normal_node(
-                    state,
-                    config,
-                    callback_mgr,
-                )
-                async for item in result:
-                    yield item
+            async for item in self._stream_by_node_type(
+                state,
+                config,
+                callback_mgr,
+            ):
+                yield item
 
             logger.info("Node '%s' execution completed successfully", self.name)
         except Exception as e:

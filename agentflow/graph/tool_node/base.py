@@ -274,7 +274,7 @@ class ToolNode(
         config: dict[str, t.Any],
         state: AgentState,
         callback_manager: CallbackManager = Inject[CallbackManager],
-    ) -> Message:
+    ) -> dict[str, t.Any] | Message:
         """Execute a specific tool by name with the provided arguments.
 
         This method handles tool execution across all configured providers (local,
@@ -415,8 +415,25 @@ class ToolNode(
                 state,
                 callback_manager,
             )
-            event.data["message"] = res.model_dump()
-            event.content_blocks = [ToolResultBlock(call_id=tool_call_id, output=res.model_dump())]
+            if isinstance(res, Message):
+                event.data["message"] = res.model_dump()
+                event.content_blocks = [
+                    ToolResultBlock(
+                        call_id=tool_call_id,
+                        output=res.model_dump(),
+                    )
+                ]
+            elif isinstance(res, dict):
+                msg = res.get("messages")
+                if isinstance(msg, Message):
+                    event.data["message"] = msg.model_dump()
+                    event.content_blocks = [
+                        ToolResultBlock(
+                            call_id=tool_call_id,
+                            output=msg.model_dump(),
+                        )
+                    ]
+
             event.event_type = EventType.END
             event.content_type = [ContentType.TOOL_RESULT, ContentType.MESSAGE]
             publish_event(event)
@@ -447,7 +464,7 @@ class ToolNode(
         config: dict[str, t.Any],
         state: AgentState,
         callback_manager: CallbackManager = Inject[CallbackManager],
-    ) -> t.AsyncIterator[Message]:
+    ) -> t.AsyncIterator[Message | dict[str, t.Any]]:
         """Execute a tool with streaming support, yielding incremental results.
 
         Similar to invoke() but designed for tools that can provide streaming responses
@@ -583,10 +600,18 @@ class ToolNode(
                 state,
                 callback_manager,
             )
-            event.data["message"] = result.model_dump()
-            event.content_blocks = [
-                ToolResultBlock(call_id=tool_call_id, output=result.model_dump())
-            ]
+            if isinstance(result, Message):
+                event.data["message"] = result.model_dump()
+                event.content_blocks = [
+                    ToolResultBlock(call_id=tool_call_id, output=result.model_dump())
+                ]
+            elif isinstance(result, dict):
+                msg = result.get("messages")
+                if isinstance(msg, Message):
+                    event.data["message"] = msg.model_dump()
+                    event.content_blocks = [
+                        ToolResultBlock(call_id=tool_call_id, output=msg.model_dump())
+                    ]
             event.event_type = EventType.END
             event.content_type = [ContentType.TOOL_RESULT, ContentType.MESSAGE]
             publish_event(event)

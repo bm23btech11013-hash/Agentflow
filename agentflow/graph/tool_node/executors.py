@@ -476,24 +476,27 @@ class LocalExecMixin:
         state: AgentState,
         tool_call_id: str,
         meta: dict[str, t.Any],
-    ) -> Message:
+    ) -> dict[str, t.Any] | Message:
         if isinstance(result, ToolResult):
             if result.state:
                 for key, value in result.state.items():
                     if hasattr(state, key):
                         setattr(state, key, value)
 
-            return Message.tool_message(
-                content=[
-                    ToolResultBlock(
-                        call_id=tool_call_id,
-                        output=result.message,
-                        status="completed",
-                        is_error=False,
-                    )
-                ],
-                meta=meta,
-            )
+            return {
+                "state": state,
+                "messages": Message.tool_message(
+                    content=[
+                        ToolResultBlock(
+                            call_id=tool_call_id,
+                            output=result.message,
+                            status="completed",
+                            is_error=False,
+                        )
+                    ],
+                    meta=meta,
+                ),
+            }
 
         if isinstance(result, Message):
             result.metadata = {**meta, **(result.metadata or {})}
@@ -512,7 +515,7 @@ class LocalExecMixin:
         config: dict[str, t.Any],
         state: AgentState,
         callback_mgr: CallbackManager,
-    ) -> Message:
+    ) -> dict[str, t.Any] | Message:
         context = CallbackContext(
             invocation_type=InvocationType.TOOL,
             node_name="ToolNode",
@@ -573,7 +576,19 @@ class LocalExecMixin:
             )
 
             msg = self._message_from_internal_result(result, state, tool_call_id, meta)
-            self._publish_internal_completion(event, msg, "Internal tool execution complete")
+            if isinstance(msg, Message):
+                self._publish_internal_completion(event, msg, "Internal tool execution complete")
+            elif isinstance(msg, dict):
+                self._publish_internal_completion(
+                    event,
+                    Message.tool_message(
+                        content=self._build_internal_result_blocks(
+                            msg.get("messages"), tool_call_id
+                        ),
+                        meta=meta,
+                    ),
+                    "Internal tool execution complete",
+                )
             return msg
 
         except Exception as e:  # pragma: no cover - error path
