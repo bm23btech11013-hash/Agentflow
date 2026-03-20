@@ -21,66 +21,6 @@ logger = logging.getLogger("agentflow.agent")
 class AgentExecutionMixin:
     """Execution flow, tool resolution, and provider dispatch helpers."""
 
-    def _interpolate_system_prompts(
-        self,
-        system_prompts: list[dict[str, Any]],
-        state: AgentState,
-    ) -> list[dict[str, Any]]:
-        """Interpolate state variables into system prompt content.
-
-        Supports placeholders like {field_name} in system prompt strings.
-        Uses model_dump() to get all state fields for interpolation.
-
-        Args:
-            system_prompts: List of system prompt dicts with "role" and "content".
-            state: Current agent state with custom fields.
-
-        Returns:
-            List of system prompts with interpolated content.
-
-        Example:
-            ```python
-            class MyState(AgentState):
-                user_name: str = "Alice"
-
-
-            prompts = [{"role": "system", "content": "Hello {user_name}!"}]
-            # After interpolation: [{"role": "system", "content": "Hello Alice!"}]
-            ```
-        """
-        interpolated = []
-        state_dict = state.model_dump()
-
-        for prompt in system_prompts:
-            if not isinstance(prompt.get("content"), str):
-                # Non-string content (e.g., multimodal), pass through as-is
-                interpolated.append(prompt)
-                continue
-
-            content = prompt["content"]
-            try:
-                # Interpolate placeholders with state variables
-                interpolated_content = content.format(**state_dict)
-                interpolated.append({**prompt, "content": interpolated_content})
-            except KeyError as e:
-                # Missing field in state - log warning and use original
-                logger.warning(
-                    "Failed to interpolate system prompt: missing field %s. "
-                    "Using original prompt without interpolation.",
-                    e,
-                )
-                interpolated.append(prompt)
-            except (ValueError, IndexError) as e:
-                # Invalid format string or other formatting issues
-                logger.warning(
-                    "Failed to interpolate system prompt due to formatting error: %s. "
-                    "Using original prompt without interpolation.",
-                    e,
-                )
-                interpolated.append(prompt)
-
-        return interpolated
-
     def _setup_tools(self) -> ToolNode | None:
         """Normalize the tools input to a ToolNode instance."""
         if self.tools is None:
@@ -183,11 +123,8 @@ class AgentExecutionMixin:
 
         state = await self._trim_context(state)
 
-        # Interpolate state variables into system prompts
-        interpolated_system_prompt = self._interpolate_system_prompts(self.system_prompt, state)
-
         messages = convert_messages(
-            system_prompts=interpolated_system_prompt,
+            system_prompts=self.system_prompt,
             state=state,
             extra_messages=self.extra_messages or [],
         )
