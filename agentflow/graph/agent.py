@@ -13,7 +13,6 @@ from agentflow.graph.tool_node import ToolNode
 from agentflow.skills.models import SkillConfig
 from agentflow.state.message import Message
 
-from .agent_internal.anthropic import AgentAnthropicMixin
 from .agent_internal.constants import REASONING_DEFAULT
 from .agent_internal.execution import AgentExecutionMixin
 from .agent_internal.google import AgentGoogleMixin
@@ -27,7 +26,6 @@ logger = logging.getLogger("agentflow.agent")
 
 class Agent(
     AgentExecutionMixin,
-    AgentAnthropicMixin,
     AgentGoogleMixin,
     AgentOpenAIMixin,
     AgentProviderMixin,
@@ -38,7 +36,7 @@ class Agent(
 
     This class handles common boilerplate for agent implementations including:
     - Automatic message conversion
-    - LLM calls via native provider SDKs (OpenAI, Anthropic, Google)
+    - LLM calls via native provider SDKs (OpenAI, Google)
     - Tool handling with conditional logic
     - Optional learning/RAG capabilities
     - Response conversion
@@ -56,13 +54,6 @@ class Agent(
             tools=[weather_tool],
         )
 
-        # Or with Anthropic
-        agent = Agent(
-            model="claude-3-5-sonnet-20241022",
-            provider="anthropic",
-            system_prompt="You are a helpful assistant",
-        )
-
         # Use it in a graph
         graph = StateGraph()
         graph.add_node("MAIN", agent)  # Agent acts as a node function
@@ -71,8 +62,8 @@ class Agent(
         ```
 
     Attributes:
-        model: Model identifier (e.g., "gpt-4o", "claude-3-5-sonnet-20241022")
-        provider: Provider name ("openai", "anthropic", "google")
+        model: Model identifier (e.g., "gpt-4o", "gemini-2.0-flash")
+        provider: Provider name ("openai", "google")
         system_prompt: System prompt string or list of message dicts
         tools: List of tool functions or ToolNode instance
         client: Optional custom client instance (escape hatch for power users)

@@ -44,7 +44,6 @@ build-backend = "setuptools.build_meta"
 litellm = ["litellm>=1.77.0"]
 google-genai = ["google-genai>=1.56.0"]
 openai = ["openai>=1.77.0"]
-anthropic = ["anthropic>=0.45.0"]
 pg_checkpoint = ["asyncpg>=0.29.0","redis>=4.2"]
 mcp = ["fastmcp>=2.11.3","mcp>=1.13.0"]
 composio = ["composio>=0.8.0"]

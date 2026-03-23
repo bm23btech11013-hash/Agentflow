@@ -126,9 +126,6 @@ class AgentExecutionMixin:
         if self.provider == "google":
             return await self._call_google(messages, tools, stream, **kwargs)
 
-        if self.provider == "anthropic":
-            return await self._call_anthropic(messages, tools, stream, **kwargs)
-
         raise ValueError(f"Unsupported provider: {self.provider}")
 
     async def execute(

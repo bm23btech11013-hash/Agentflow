@@ -9,13 +9,11 @@ and message normalization for agent workflows.
 Exports:
     BaseConverter: Abstract base class for LLM response converters.
     ConverterType: Enum of supported converter types.
-    AnthropicConverter: Converter for Anthropic (Claude) responses and streams.
     LiteLLMConverter: Converter for LiteLLM responses and streams.
     GoogleGenAIConverter: Converter for Google Generative AI responses and streams.
     OpenAIConverter: Converter for OpenAI responses and streams.
 """
 
-from .anthropic_converter import AnthropicConverter
 from .base_converter import BaseConverter, ConverterType
 from .google_genai_converter import GoogleGenAIConverter
 from .litellm_converter import LiteLLMConverter
@@ -24,7 +22,6 @@ from .openai_responses_converter import OpenAIResponsesConverter
 
 
 __all__ = [
-    "AnthropicConverter",
     "BaseConverter",
     "ConverterType",
     "GoogleGenAIConverter",
