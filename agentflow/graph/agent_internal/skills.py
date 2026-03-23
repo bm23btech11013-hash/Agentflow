@@ -21,12 +21,12 @@ class AgentSkillsMixin:
     """Skills registration and injection helpers for Agent."""
 
     # Instance attributes set by _setup_skills
-    _skills_config: "SkillConfig | None"
-    _skills_registry: "SkillsRegistry | None"
-    _skill_injector: "SkillInjector | None"
+    _skills_config: SkillConfig | None
+    _skills_registry: SkillsRegistry | None
+    _skill_injector: SkillInjector | None
     _tool_node: ToolNode | None
 
-    def _setup_skills(self, skills: "SkillConfig | None") -> None:
+    def _setup_skills(self, skills: SkillConfig | None) -> None:
         """Initialize skills infrastructure if a SkillConfig is provided.
 
         Args:

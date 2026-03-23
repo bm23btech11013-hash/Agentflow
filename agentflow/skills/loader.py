@@ -16,12 +16,13 @@ Directory structure:
 from __future__ import annotations
 
 import logging
-import os
+from pathlib import Path
 from typing import Any
 
 import yaml
 
 from agentflow.skills.models import SkillMeta
+
 
 logger = logging.getLogger("agentflow.skills.loader")
 
@@ -52,18 +53,19 @@ def discover_skills(skills_dir: str) -> list[SkillMeta]:
     """
     results: list[SkillMeta] = []
 
-    if not os.path.isdir(skills_dir):
+    skills_path = Path(skills_dir)
+    if not skills_path.is_dir():
         logger.warning("Skills directory not found: %s", skills_dir)
         return results
 
-    for entry in sorted(os.listdir(skills_dir)):
-        skill_dir = os.path.join(skills_dir, entry)
-        skill_file = os.path.join(skill_dir, "SKILL.md")
+    for entry in sorted(p.name for p in skills_path.iterdir()):
+        skill_dir = skills_path / entry
+        skill_file = skill_dir / "SKILL.md"
 
-        if not os.path.isdir(skill_dir) or not os.path.isfile(skill_file):
+        if not skill_dir.is_dir() or not skill_file.is_file():
             continue
 
-        frontmatter = _parse_frontmatter(skill_file)
+        frontmatter = _parse_frontmatter(str(skill_file))
         if frontmatter is None:
             logger.warning("Skipping '%s': no valid YAML frontmatter in SKILL.md", entry)
             continue
@@ -83,9 +85,9 @@ def discover_skills(skills_dir: str) -> list[SkillMeta]:
             triggers = [triggers]
 
         resources: list[str] = []
-        for rel_path in (meta_block.get("resources") or frontmatter.get("resources", [])):
-            abs_path = os.path.join(skill_dir, rel_path)
-            if os.path.isfile(abs_path):
+        for rel_path in meta_block.get("resources") or frontmatter.get("resources", []):
+            abs_path = skill_dir / rel_path
+            if abs_path.is_file():
                 resources.append(rel_path)
             else:
                 logger.warning("Resource not found for skill '%s': %s", name, rel_path)
@@ -103,8 +105,8 @@ def discover_skills(skills_dir: str) -> list[SkillMeta]:
                 resources=resources,
                 tags=tags,
                 priority=priority,
-                skill_dir=skill_dir,
-                skill_file=skill_file,
+                skill_dir=str(skill_dir),
+                skill_file=str(skill_file),
             )
         )
         logger.info("Discovered skill: '%s' (%d resource(s))", name, len(resources))
@@ -115,8 +117,7 @@ def discover_skills(skills_dir: str) -> list[SkillMeta]:
 def load_skill_content(meta: SkillMeta) -> str:
     """Read and return the body of a SKILL.md (stripping YAML frontmatter)."""
     try:
-        with open(meta.skill_file, encoding="utf-8") as f:
-            content = f.read()
+        content = Path(meta.skill_file).read_text(encoding="utf-8")
     except OSError as exc:
         logger.warning("Cannot read %s: %s", meta.skill_file, exc)
         return ""
@@ -125,17 +126,16 @@ def load_skill_content(meta: SkillMeta) -> str:
     if content.startswith("---"):
         end = content.find("\n---", 3)
         if end != -1:
-            content = content[end + 4:].lstrip("\n")
+            content = content[end + 4 :].lstrip("\n")
 
     return content
 
 
 def load_resource(meta: SkillMeta, rel_path: str) -> str | None:
     """Read a resource file relative to the skill directory."""
-    abs_path = os.path.join(meta.skill_dir, rel_path)
+    abs_path = Path(meta.skill_dir) / rel_path
     try:
-        with open(abs_path, encoding="utf-8") as f:
-            return f.read()
+        return abs_path.read_text(encoding="utf-8")
     except OSError:
         logger.warning("Could not read resource: %s", abs_path)
         return None
@@ -143,11 +143,11 @@ def load_resource(meta: SkillMeta, rel_path: str) -> str | None:
 
 # -- internal ---------------------------------------------------------------
 
+
 def _parse_frontmatter(skill_file: str) -> dict[str, Any] | None:
     """Extract and parse YAML frontmatter from a SKILL.md file."""
     try:
-        with open(skill_file, encoding="utf-8") as f:
-            content = f.read()
+        content = Path(skill_file).read_text(encoding="utf-8")
     except OSError as exc:
         logger.error("Cannot read %s: %s", skill_file, exc)
         return None

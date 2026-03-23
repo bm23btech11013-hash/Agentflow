@@ -107,7 +107,7 @@ class AgentProviderMixin:
 
         if provider == "anthropic":
             try:
-                from anthropic import AsyncAnthropic  # noqa: PLC0415
+                from anthropic import AsyncAnthropic
             except ImportError as exc:
                 raise ImportError(
                     "anthropic SDK is required for Anthropic provider. "
@@ -117,8 +117,7 @@ class AgentProviderMixin:
             api_key = self.llm_kwargs.get("api_key") or os.getenv("ANTHROPIC_API_KEY")
             if not api_key:
                 logger.warning(
-                    "ANTHROPIC_API_KEY environment variable not set. "
-                    "API calls may fail."
+                    "ANTHROPIC_API_KEY environment variable not set. " "API calls may fail."
                 )
 
             logger.info("Creating Anthropic AsyncAnthropic client")
@@ -144,5 +143,6 @@ class AgentProviderMixin:
             return genai.Client(api_key=api_key)
 
         raise ValueError(
-            f"Unsupported provider: {provider}. Supported providers: 'openai', 'anthropic', 'google'"
+            f"Unsupported provider: {provider}. "
+            f"Supported providers: 'openai', 'anthropic', 'google'"
         )

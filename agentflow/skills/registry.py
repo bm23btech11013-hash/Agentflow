@@ -6,8 +6,9 @@ registered in InjectQ so that any graph node can access it.
 
 from __future__ import annotations
 
+import contextlib
 import logging
-import os
+from pathlib import Path
 from typing import Any
 
 from agentflow.skills.loader import (
@@ -16,6 +17,7 @@ from agentflow.skills.loader import (
     load_skill_content,
 )
 from agentflow.skills.models import SkillConfig, SkillMeta
+
 
 logger = logging.getLogger("agentflow.skills.registry")
 
@@ -28,7 +30,7 @@ class SkillsRegistry:
         registry = SkillsRegistry()
         registry.discover("/path/to/skills")
         table = registry.build_trigger_table()
-        tool  = registry.build_set_skill_tool()
+        tool = registry.build_set_skill_tool()
     """
 
     def __init__(self) -> None:
@@ -42,10 +44,8 @@ class SkillsRegistry:
         """Register a single :class:`SkillMeta`."""
         self._skills[meta.name] = meta
         if meta.skill_file:
-            try:
-                self._mtimes[meta.name] = os.path.getmtime(meta.skill_file)
-            except OSError:
-                pass
+            with contextlib.suppress(OSError):
+                self._mtimes[meta.name] = Path(meta.skill_file).stat().st_mtime
         logger.info("Registered skill: '%s'", meta.name)
 
     def discover(self, skills_dir: str) -> list[SkillMeta]:
@@ -84,7 +84,7 @@ class SkillsRegistry:
 
         if hot_reload and meta.skill_file:
             try:
-                current_mtime = os.path.getmtime(meta.skill_file)
+                current_mtime = Path(meta.skill_file).stat().st_mtime
             except OSError:
                 current_mtime = 0.0
             cached = self._mtimes.get(name, 0.0)
@@ -107,7 +107,7 @@ class SkillsRegistry:
         for rel_path in meta.resources:
             content = load_resource(meta, rel_path)
             if content is not None:
-                result[os.path.basename(rel_path)] = content
+                result[Path(rel_path).name] = content
         return result
 
     # -- prompt helpers -----------------------------------------------------
@@ -138,7 +138,7 @@ class SkillsRegistry:
     def build_set_skill_tool(self, config: SkillConfig | None = None) -> Any:
         """Convenience — delegates to :func:`activation.make_set_skill_tool`."""
         from agentflow.skills.activation import make_set_skill_tool
-        
+
         return make_set_skill_tool(self, config)
 
     def build_clear_skill_tool(self) -> Any:

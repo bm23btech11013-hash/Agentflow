@@ -13,8 +13,8 @@ from agentflow.graph.tool_node import ToolNode
 from agentflow.skills.models import SkillConfig
 from agentflow.state.message import Message
 
-from .agent_internal.constants import REASONING_DEFAULT
 from .agent_internal.anthropic import AgentAnthropicMixin
+from .agent_internal.constants import REASONING_DEFAULT
 from .agent_internal.execution import AgentExecutionMixin
 from .agent_internal.google import AgentGoogleMixin
 from .agent_internal.openai import AgentOpenAIMixin
@@ -210,7 +210,7 @@ class Agent(
         """
         # Pop kwargs-only params before passing to parent
         base_url: str | None = kwargs.pop("base_url", None)
-        api_style: str = kwargs.pop("api_style", "chat")
+        # Note: api_style is already a named parameter, don't pop from kwargs
         # Call parent constructor
         super().__init__(
             model=model, system_prompt=system_prompt or [], tools=tools, base_url=base_url, **kwargs

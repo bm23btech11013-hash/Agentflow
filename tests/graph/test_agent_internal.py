@@ -272,7 +272,7 @@ class TestCreateClient:
     def test_unsupported_provider_raises_value_error(self):
         agent = _make_openai_agent()
         with pytest.raises(ValueError, match="Unsupported provider"):
-            agent._create_client("anthropic")
+            agent._create_client("unsupported_provider")
 
     def test_openai_client_created_with_base_url(self):
         mock_cls = MagicMock(return_value=MagicMock())

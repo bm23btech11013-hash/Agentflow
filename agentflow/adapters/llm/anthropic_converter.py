@@ -35,7 +35,7 @@ logger = logging.getLogger("agentflow.adapters.anthropic")
 
 try:
     from anthropic.types import Message as AnthropicMessage
-    from anthropic.types import MessageStreamEvent  # noqa: F401
+    from anthropic.types import MessageStreamEvent
 
     HAS_ANTHROPIC = True
 except ImportError:

@@ -11,11 +11,13 @@ import logging
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
+
 if TYPE_CHECKING:
-    from agentflow.state.message import Message
     from agentflow.skills.registry import SkillsRegistry
+    from agentflow.state.message import Message
 
 from agentflow.skills.models import SkillConfig
+
 
 logger = logging.getLogger("agentflow.skills.activation")
 
@@ -24,7 +26,7 @@ _DEACTIVATED_MARKER = "SKILL_DEACTIVATED"
 
 
 def make_set_skill_tool(
-    registry: "SkillsRegistry",
+    registry: SkillsRegistry,
     config: SkillConfig | None = None,
 ) -> Callable:
     """Factory that returns a ``set_skill`` function whose doc-string
@@ -34,13 +36,12 @@ def make_set_skill_tool(
     ``"SKILL_ACTIVATED:triage"`` — a marker string that the framework
     intercepts in ``InvokeNodeHandler._call_tools``.
     """
-    from agentflow.skills.registry import SkillsRegistry  # avoid circular import
 
     available = registry.get_all()
     names_str = ", ".join(sorted(m.name for m in available))
     skill_list = "\n".join(f"- {m.name}: {m.description}" for m in available)
 
-    def set_skill(skill_name: str) -> str:  # noqa: D401
+    def set_skill(skill_name: str) -> str:
         """Activate a specialized skill protocol.
 
         Call this tool when the user's request matches a skill domain.
@@ -83,7 +84,7 @@ def make_clear_skill_tool() -> Callable:
 
 
 def extract_skill_markers(
-    messages: list["Message"],
+    messages: list[Message],
 ) -> tuple[list[str], bool]:
     """Scan a list of tool-result messages for skill activation/deactivation markers.
 
@@ -106,7 +107,7 @@ def extract_skill_markers(
             if not isinstance(raw, str):
                 continue
             if raw.startswith(_ACTIVATED_PREFIX):
-                name = raw[len(_ACTIVATED_PREFIX):].strip()
+                name = raw[len(_ACTIVATED_PREFIX) :].strip()
                 if name:
                     activated.append(name)
             elif raw == _DEACTIVATED_MARKER:

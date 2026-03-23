@@ -9,11 +9,12 @@ never enter ``state.context``), they survive context trimming.
 from __future__ import annotations
 
 import logging
-import os
 from collections.abc import Callable
+from pathlib import Path
 
 from agentflow.skills.models import SkillConfig
 from agentflow.skills.registry import SkillsRegistry
+
 
 logger = logging.getLogger("agentflow.skills.injection")
 
@@ -67,8 +68,8 @@ class SkillInjector:
             routing_note = (
                 "\n\n---\n"
                 "**ROUTING:** On the next user turn, re-check the available skills table. "
-                "If the request better matches a different skill, call `set_skill(other_skill_name)` "
-                "immediately — do not answer using this skill."
+                "If the request better matches a different skill, "
+                "call `set_skill(other_skill_name)` immediately — do not answer using this skill."
             )
             full = f"## ACTIVE SKILL: {header}\n\n{content}{routing_note}"
             prompts.append({"role": "system", "content": full})
@@ -102,7 +103,7 @@ class SkillInjector:
 
         # Check mtime for cache validity
         try:
-            current_mtime = os.path.getmtime(meta.skill_file) if meta.skill_file else 0.0
+            current_mtime = Path(meta.skill_file).stat().st_mtime if meta.skill_file else 0.0
         except OSError:
             current_mtime = 0.0
 

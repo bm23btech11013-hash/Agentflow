@@ -14,6 +14,7 @@ Usage::
 from agentflow.skills.models import SkillConfig, SkillMeta
 from agentflow.skills.registry import SkillsRegistry
 
+
 __all__ = [
     "SkillConfig",
     "SkillMeta",

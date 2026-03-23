@@ -61,7 +61,6 @@ class ModelResponseConverter:
             elif converter == "google":
                 from .google_genai_converter import GoogleGenAIConverter
 
-            
                 self.converter = GoogleGenAIConverter()
                 logger.debug("Using GoogleGenAIConverter for response conversion")
 

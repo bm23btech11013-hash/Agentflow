@@ -61,7 +61,7 @@ class AgentAnthropicMixin:
                 if content:
                     parts.append({"type": "text", "text": str(content)})
                 for tool_call in message["tool_calls"]:
-                    import json  # noqa: PLC0415
+                    import json
 
                     function = tool_call.get("function", {})
                     try:
@@ -94,7 +94,9 @@ class AgentAnthropicMixin:
                 anthropic_tool: dict[str, Any] = {
                     "name": function.get("name", ""),
                     "description": function.get("description", ""),
-                    "input_schema": function.get("parameters", {"type": "object", "properties": {}}),
+                    "input_schema": function.get(
+                        "parameters", {"type": "object", "properties": {}}
+                    ),
                 }
                 anthropic_tools.append(anthropic_tool)
         return anthropic_tools
