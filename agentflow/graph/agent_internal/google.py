@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import logging
 from typing import Any
@@ -47,6 +48,7 @@ class AgentGoogleMixin:
                 if text:
                     parts.append(types.Part(text=text))
 
+                first_fc = True
                 for tool_call in message["tool_calls"]:
                     function = tool_call.get("function", {})
                     function_name = function.get("name", "")
@@ -54,14 +56,24 @@ class AgentGoogleMixin:
                         function_args = json.loads(function.get("arguments", "{}"))
                     except (json.JSONDecodeError, TypeError):
                         function_args = {}
-                    parts.append(
-                        types.Part(
-                            function_call=types.FunctionCall(
-                                name=function_name,
-                                args=function_args,
-                            )
+                    part = types.Part(
+                        function_call=types.FunctionCall(
+                            name=function_name,
+                            args=function_args,
                         )
                     )
+                    # Gemini 2.5/3 thinking models require a thought_signature on
+                    # the first function call part when replaying history. Use the
+                    # real signature stored during response conversion when available;
+                    # fall back to the officially documented bypass value otherwise.
+                    if first_fc:
+                        sig_b64 = tool_call.get("thought_signature")
+                        if sig_b64:
+                            part.thought_signature = base64.b64decode(sig_b64)
+                        else:
+                            part.thought_signature = b"skip_thought_signature_validator"
+                        first_fc = False
+                    parts.append(part)
 
                 google_contents.append(types.Content(role="model", parts=parts))
                 continue
@@ -139,11 +151,21 @@ class AgentGoogleMixin:
             if function_declarations:
                 config_kwargs["tools"] = [types.Tool(function_declarations=function_declarations)]
 
-        if self.reasoning_config and self.output_type == "text":
+        if (
+            self.reasoning_config
+            and isinstance(self.reasoning_config, dict)
+            and self.output_type == "text"
+        ):
             thinking_kwargs: dict[str, Any] = {"include_thoughts": True}
             budget = self.reasoning_config.get("thinking_budget")
             effort = self.reasoning_config.get("effort")
-            if budget is not None:
+            thinking_level = self.reasoning_config.get("thinking_level")
+            if thinking_level is not None:
+                # Explicit thinking_level — preferred for Gemini 3 models.
+                # Accepts the string form ("low"/"medium"/"high"/"minimal") or
+                # the ThinkingLevel enum value directly.
+                thinking_kwargs["thinking_level"] = thinking_level
+            elif budget is not None:
                 thinking_kwargs["thinking_budget"] = int(budget)
             elif effort and effort in GOOGLE_THINKING_BUDGET_BY_EFFORT:
                 thinking_kwargs["thinking_budget"] = GOOGLE_THINKING_BUDGET_BY_EFFORT[effort]

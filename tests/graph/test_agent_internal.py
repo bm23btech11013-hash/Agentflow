@@ -770,6 +770,132 @@ class TestBuildGoogleConfig:
             agent._build_google_config("system", None, {})
         assert len(thinking_called) == 0
 
+    def test_reasoning_thinking_level_passed_directly(self):
+        """thinking_level key in reasoning_config is forwarded directly to ThinkingConfig."""
+        agent = _make_google_agent()
+        agent.reasoning_config = {"thinking_level": "high"}
+        agent.output_type = "text"
+
+        thinking_kwargs: dict = {}
+        types_mock = _build_google_types_mock()
+        types_mock.ThinkingConfig = lambda **kw: (thinking_kwargs.update(kw) or MagicMock())
+        types_mock.GenerateContentConfig = lambda **kw: MagicMock()
+        with _google_types_patch(types_mock):
+            agent._build_google_config("system", None, {})
+        assert thinking_kwargs.get("thinking_level") == "high"
+        assert "thinking_budget" not in thinking_kwargs
+
+    def test_reasoning_thinking_level_takes_precedence_over_effort(self):
+        """thinking_level beats effort when both are present in reasoning_config."""
+        agent = _make_google_agent()
+        agent.reasoning_config = {"thinking_level": "minimal", "effort": "high"}
+        agent.output_type = "text"
+
+        thinking_kwargs: dict = {}
+        types_mock = _build_google_types_mock()
+        types_mock.ThinkingConfig = lambda **kw: (thinking_kwargs.update(kw) or MagicMock())
+        types_mock.GenerateContentConfig = lambda **kw: MagicMock()
+        with _google_types_patch(types_mock):
+            agent._build_google_config("system", None, {})
+        assert thinking_kwargs.get("thinking_level") == "minimal"
+        assert "thinking_budget" not in thinking_kwargs
+
+
+class TestConvertToGoogleFormatThoughtSignature:
+    """Tests for thought_signature handling in _convert_to_google_format."""
+
+    def test_stored_thought_signature_used_on_first_fc(self):
+        """Real base64 signature is decoded and set on the first function call part."""
+        import base64
+
+        agent = _make_google_agent()
+        sig_bytes = b"real_signature_bytes"
+        sig_b64 = base64.b64encode(sig_bytes).decode()
+
+        messages = [
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [
+                    {
+                        "id": "call_1",
+                        "function": {"name": "fn", "arguments": "{}"},
+                        "type": "function",
+                        "thought_signature": sig_b64,
+                    }
+                ],
+            }
+        ]
+
+        assigned_sigs: list = []
+
+        types_mock = _build_google_types_mock()
+        original_part = types_mock.Part
+
+        class CapturingSigPart(original_part.__class__):
+            def __init__(self, **kw):
+                super().__init__(**kw)
+                self._sig = None
+
+            @property  # type: ignore[override]
+            def thought_signature(self):
+                return self._sig
+
+            @thought_signature.setter
+            def thought_signature(self, v):
+                self._sig = v
+                assigned_sigs.append(v)
+
+        # Use a simpler capture approach: wrap Part to record attribute sets
+        captured_parts: list = []
+        _OrigPart = types_mock.Part
+
+        class TrackingPart(_OrigPart):
+            def __setattr__(self, name, value):
+                if name == "thought_signature":
+                    captured_parts.append(value)
+                super().__setattr__(name, value)
+
+        types_mock.Part = TrackingPart
+
+        with _google_types_patch(types_mock):
+            agent._convert_to_google_format(messages)
+
+        assert len(captured_parts) == 1
+        assert captured_parts[0] == sig_bytes
+
+    def test_bypass_string_used_when_no_stored_signature(self):
+        """Bypass string is set on the first FC when no thought_signature is stored."""
+        agent = _make_google_agent()
+        messages = [
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [
+                    {"id": "call_1", "function": {"name": "fn", "arguments": "{}"}, "type": "function"}
+                ],
+            }
+        ]
+
+        captured_parts: list = []
+
+        types_mock = _build_google_types_mock()
+        _OrigPart = types_mock.Part
+
+        class TrackingPart(_OrigPart):
+            def __setattr__(self, name, value):
+                if name == "thought_signature":
+                    captured_parts.append(value)
+                super().__setattr__(name, value)
+
+        types_mock.Part = TrackingPart
+
+        with _google_types_patch(types_mock):
+            agent._convert_to_google_format(messages)
+
+        assert len(captured_parts) == 1
+        assert captured_parts[0] == b"skip_thought_signature_validator"
+
 
 # ═════════════════════════════════════════════════════════════════════════════
 # AgentGoogleMixin – _call_google dispatch
