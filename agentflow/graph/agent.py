@@ -229,11 +229,11 @@ class Agent(
         self.api_style = api_style
 
         # Apply default (medium effort) when not explicitly provided;
-        # False or None = disabled.
-        if reasoning_config is REASONING_DEFAULT:
+        # True or sentinel = enable with defaults; False or None = disabled.
+        if reasoning_config is REASONING_DEFAULT or reasoning_config is True:
             reasoning_config = {"effort": "medium"}
         self.reasoning_config: dict[str, Any] | None = (
-            None if reasoning_config is False else reasoning_config
+            None if (reasoning_config is False or reasoning_config is None) else reasoning_config
         )  # type: ignore
 
         logger.info(

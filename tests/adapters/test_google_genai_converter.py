@@ -353,3 +353,46 @@ class TestGoogleGenAIConverter:
         # Should yield one empty message (error handling behavior)
         assert len(messages) == 1
         assert len(messages[0].content) == 0
+
+    @pytest.mark.asyncio
+    async def test_function_call_stores_thought_signature(self, converter):
+        """Test that thought_signature bytes from a Part are base64-stored in tools_calls."""
+        import base64
+
+        sig_bytes = b"test_thought_signature"
+
+        class MockPartWithSig(MockPart):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                self.thought_signature = sig_bytes
+
+        func_call = MockFunctionCall(name="my_func", args={"x": 1})
+        func_part = MockPartWithSig(function_call=func_call)
+        content = MockContent(parts=[func_part])
+        candidate = MockCandidate(content=content)
+        response = MockGenerateContentResponse(candidates=[candidate])
+
+        message = await converter.convert_response(response)
+
+        assert message.tools_calls is not None
+        assert len(message.tools_calls) == 1
+        tc = message.tools_calls[0]
+        assert "thought_signature" in tc
+        assert base64.b64decode(tc["thought_signature"]) == sig_bytes
+
+    @pytest.mark.asyncio
+    async def test_function_call_without_thought_signature(self, converter):
+        """Test that missing thought_signature results in no key in tools_calls."""
+        func_call = MockFunctionCall(name="my_func", args={"x": 1})
+        func_part = MockPart(function_call=func_call)
+        content = MockContent(parts=[func_part])
+        candidate = MockCandidate(content=content)
+        response = MockGenerateContentResponse(candidates=[candidate])
+
+        message = await converter.convert_response(response)
+
+        assert message.tools_calls is not None
+        assert len(message.tools_calls) == 1
+        tc = message.tools_calls[0]
+        # No thought_signature attribute on MockPart → key must be absent
+        assert "thought_signature" not in tc

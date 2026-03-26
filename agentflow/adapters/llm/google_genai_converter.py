@@ -7,6 +7,7 @@ supporting both standard and streaming responses.
 
 from __future__ import annotations
 
+import base64
 import inspect
 import json
 import logging
@@ -182,13 +183,19 @@ class GoogleGenAIConverter(BaseConverter):
                 )
             )
 
-            tools_calls.append(
-                {
-                    "id": tool_call_id,
-                    "function": {"name": func_call.name, "arguments": json.dumps(args)},
-                    "type": "function",
-                }
-            )
+            tool_call_dict: dict[str, Any] = {
+                "id": tool_call_id,
+                "function": {"name": func_call.name, "arguments": json.dumps(args)},
+                "type": "function",
+            }
+            # Preserve thought_signature bytes so they can be replayed verbatim
+            # in subsequent requests. Gemini 3 strictly requires signatures on
+            # function call parts; Gemini 2.5 also benefits from them.
+            sig = getattr(part, "thought_signature", None)
+            if sig:
+                tool_call_dict["thought_signature"] = base64.b64encode(sig).decode()
+
+            tools_calls.append(tool_call_dict)
 
     def _process_inline_media_part(self, part: Any, blocks: list) -> None:
         """Process inline media (images, audio, video) part."""
@@ -278,13 +285,18 @@ class GoogleGenAIConverter(BaseConverter):
                     )
                 )
 
-                tools_calls.append(
-                    {
-                        "id": tool_call_id,
-                        "function": {"name": func_call.name, "arguments": json.dumps(args)},
-                        "type": "function",
-                    }
-                )
+                tool_call_dict: dict[str, Any] = {
+                    "id": tool_call_id,
+                    "function": {"name": func_call.name, "arguments": json.dumps(args)},
+                    "type": "function",
+                }
+                # Preserve thought_signature bytes so they can be replayed verbatim
+                # in subsequent requests (streaming path).
+                sig = getattr(part, "thought_signature", None)
+                if sig:
+                    tool_call_dict["thought_signature"] = base64.b64encode(sig).decode()
+
+                tools_calls.append(tool_call_dict)
 
         return text_part, reasoning_part, content_blocks, tools_calls
 
@@ -384,42 +396,25 @@ class GoogleGenAIConverter(BaseConverter):
             stream = await stream
 
         # Try async iteration
-        try:
-            async for chunk in stream:  # type: ignore
-                accumulated_content, accumulated_reasoning_content, tool_calls, seq, message = (
-                    self._process_chunk(
-                        chunk,
-                        seq,
-                        accumulated_content,
-                        accumulated_reasoning_content,
-                        tool_calls,
-                        tool_ids,
+        if stream is not None:
+            try:
+                async for chunk in stream:  # type: ignore
+                    accumulated_content, accumulated_reasoning_content, tool_calls, seq, message = (
+                        self._process_chunk(
+                            chunk,
+                            seq,
+                            accumulated_content,
+                            accumulated_reasoning_content,
+                            tool_calls,
+                            tool_ids,
+                        )
                     )
-                )
 
-                if message:
-                    yield message
-        except Exception as e:
-            logger.warning("Error during async iteration: %s", e)
-
-        # Try sync iteration if async failed
-        try:
-            for chunk in stream:
-                accumulated_content, accumulated_reasoning_content, tool_calls, seq, message = (
-                    self._process_chunk(
-                        chunk,
-                        seq,
-                        accumulated_content,
-                        accumulated_reasoning_content,
-                        tool_calls,
-                        tool_ids,
-                    )
-                )
-
-                if message:
-                    yield message
-        except Exception:  # noqa: S110 # nosec B110
-            pass
+                    if message:
+                        yield message
+            except Exception as e:
+                logger.error("Google GenAI stream error: %s", e)
+                raise
 
         # After streaming, yield final message
         metadata = meta or {}

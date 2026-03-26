@@ -31,30 +31,31 @@ def get_weather(
     if state and hasattr(state, "context"):
         print(f"Number of messages in context: {len(state.context)}")  # type: ignore
 
-    return f"The weather in {location} is sunny"
+    # return f"The weather in {location} is sunny"
+    raise Exception("Simulated tool failure for testing error handling.")
 
 
-def update_context(
-    state: CustomAgentState,
-    jd_name: str,
-) -> ToolResult:
-    """Update the current jd name in the state and report back to the AI."""
-    return ToolResult(
-        message=f"JD name has been updated to '{jd_name}'.",
-        state={"jd_name": jd_name},
-    )
+# def update_context(
+#     state: CustomAgentState,
+#     jd_name: str,
+# ) -> ToolResult:
+#     """Update the current jd name in the state and report back to the AI."""
+#     return ToolResult(
+#         message=f"JD name has been updated to '{jd_name}'.",
+#         state={"jd_name": jd_name},
+#     )
 
 
 tool_node = ToolNode(
     [
         get_weather,
-        update_context,
+        # update_context,
     ]
 )
 
 # Create agent with tools
 agent = Agent(
-    model="gemini-2.5-flash",
+    model="gemini-3-flash-preview",
     provider="google",
     system_prompt=[
         {
@@ -68,6 +69,7 @@ agent = Agent(
     ],
     tool_node_name="TOOL",
     trim_context=True,
+    reasoning_config=True,
 )
 
 
@@ -120,6 +122,7 @@ app = graph.compile(
 inp = {"messages": [Message.text_message("Please call the get_weather function for New York City")]}
 config = {"thread_id": "12345", "recursion_limit": 10}
 
+
 res = app.invoke(inp, config=config)
 
 for i in res["messages"]:
@@ -133,3 +136,11 @@ for i in res["messages"]:
 # grp = app.generate_graph()
 
 # print(grp)
+# res = app.stream(inp, config=config)
+
+# for i in res:
+#     print("**********************")
+#     print("Message Type: ", i)
+#     print(i)
+#     print("**********************")
+#     print("\n\n")
