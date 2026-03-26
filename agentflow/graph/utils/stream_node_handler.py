@@ -722,6 +722,7 @@ class StreamNodeHandler(BaseLoggingMixin):
             yield stream_event
 
         yield {
+            "is_non_streaming": True,
             "state": state,
             "messages": messages,
             "next_node": None,

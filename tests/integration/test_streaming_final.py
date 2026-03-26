@@ -12,14 +12,14 @@ from agentflow.utils import END
 
 
 class MockStreamingResponse:
-    """Mock streaming response that simulates litellm streaming."""
+    """Mock streaming response that simulates incremental LLM chunks."""
 
     def __init__(self, content: str = "Streaming response"):
         self.content = content
         self.chunks = self._create_chunks()
 
     def _create_chunks(self):
-        """Create mock chunks similar to litellm format."""
+        """Create mock chunks similar to OpenAI-style chat completions."""
         words = self.content.split()
         chunks = []
 
@@ -53,14 +53,14 @@ class MockStreamingResponse:
 
 
 class MockAsyncStreamingResponse:
-    """Mock async streaming response that simulates litellm async streaming."""
+    """Mock async streaming response that simulates incremental LLM chunks."""
 
     def __init__(self, content: str = "Async streaming response"):
         self.content = content
         self.chunks = self._create_chunks()
 
     def _create_chunks(self):
-        """Create mock chunks similar to litellm format."""
+        """Create mock chunks similar to OpenAI-style chat completions."""
         words = self.content.split()
         chunks = []
 

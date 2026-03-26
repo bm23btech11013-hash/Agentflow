@@ -8,9 +8,11 @@ without making actual LLM API calls.
 import logging
 from typing import Any
 
+from agentflow.adapters.llm.base_converter import BaseConverter
 from agentflow.adapters.llm.model_response_converter import ModelResponseConverter
 from agentflow.graph.base_agent import BaseAgent
 from agentflow.state import AgentState
+from agentflow.state.message import Message
 from agentflow.utils.converter import convert_messages
 
 
@@ -18,11 +20,7 @@ logger = logging.getLogger("agentflow.testing")
 
 
 class MockLLMResponse:
-    """Mock response object that mimics LiteLLM's ModelResponse structure.
-
-    This class provides a `model_dump()` method so it can be used with
-    the LiteLLMConverter which expects response objects to have this method.
-    """
+    """Mock response object used by TestAgent."""
 
     def __init__(self, content: str, test_id: str = "test-response"):
         """Initialize mock response.
@@ -32,26 +30,23 @@ class MockLLMResponse:
             id: Response ID (default: "test-response")
         """
         self.id = test_id
-        self._data = {
-            "id": id,
-            "choices": [
-                {
-                    "message": {
-                        "role": "assistant",
-                        "content": content,
-                    }
-                }
-            ],
-            "usage": {
-                "prompt_tokens": 10,
-                "completion_tokens": 20,
-                "total_tokens": 30,
-            },
-        }
+        self.content = content
 
-    def model_dump(self) -> dict[str, Any]:
-        """Return dict representation matching LiteLLM structure."""
-        return self._data
+
+class _TestAgentConverter(BaseConverter):
+    """Convert TestAgent mock responses into assistant messages."""
+
+    async def convert_response(self, response: MockLLMResponse) -> Message:
+        return Message.text_message(response.content, role="assistant")
+
+    async def convert_streaming_response(
+        self,
+        config: dict,
+        node_name: str,
+        response: MockLLMResponse,
+        meta: dict | None = None,
+    ):
+        yield await self.convert_response(response)
 
 
 class TestAgent(BaseAgent):
@@ -127,7 +122,7 @@ class TestAgent(BaseAgent):
             **kwargs: Additional parameters (recorded for assertions)
 
         Returns:
-            MockLLMResponse object matching litellm response structure
+            MockLLMResponse object for test conversion
         """
         self.call_count += 1
         self.call_history.append(
@@ -175,7 +170,7 @@ class TestAgent(BaseAgent):
         )
         response = await self._call_llm(messages)
 
-        return ModelResponseConverter(response, converter="litellm")
+        return ModelResponseConverter(response, converter=_TestAgentConverter())
 
     # Assertion helpers for testing
 

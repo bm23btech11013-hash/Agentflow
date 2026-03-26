@@ -23,7 +23,7 @@ python examples/rag/basic_rag.py
 python examples/rag/advanced_rag.py
 ```
 
-Environment (LiteLLM compatible):
+Environment:
 
 ```bash
 export OPENAI_API_KEY=your_key

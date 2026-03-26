@@ -7,12 +7,11 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from dotenv import load_dotenv
-from litellm import acompletion
 
 from agentflow.checkpointer import InMemoryCheckpointer
 from agentflow.graph import StateGraph
 from agentflow.state.agent_state import AgentState
-from agentflow.utils import Message
+from agentflow.state import Message
 from agentflow.utils.converter import convert_messages
 
 
@@ -60,25 +59,21 @@ async def increment_agent(state: TestCustomState, config: dict[str, Any]) -> Tes
     state.score += 0.1
 
     # Add a message to context
-    message = Message.from_text(f"Processed step {state.count}")
+    message = Message.text_message(f"Processed step {state.count}")
     state.context.append(message)
 
     return state
 
 
 async def chat_agent(state: TestCustomState, config: dict[str, Any]) -> Message:
-    """Agent that generates a chat response."""
+    """Agent that generates a deterministic chat response."""
     messages = convert_messages(
         system_prompts=[{"role": "system", "content": f"You are processing item #{state.count}"}],
         state=state,
     )
-
-    response = await acompletion(
-        model="gemini/gemini-2.5-flash",
-        messages=messages,
+    return Message.text_message(
+        f"Processed item #{state.count} with {len(messages)} total messages.",
     )
-
-    return Message.from_response(response)
 
 
 def test_basic_custom_state():

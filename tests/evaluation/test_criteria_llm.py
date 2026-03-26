@@ -126,7 +126,6 @@ class TestLLMCallerMixinCallLLMScore:
 
         with (
             patch.object(TestCriterion, "_call_google_json", new=AsyncMock(return_value=None)),
-            patch.object(TestCriterion, "_call_litellm_json", new=AsyncMock(return_value=None)),
             patch.object(TestCriterion, "_call_openai_json", new=AsyncMock(return_value=None)),
         ):
             result = await criterion._call_llm_json("prompt")

@@ -6,14 +6,14 @@
 ![Python](https://img.shields.io/pypi/pyversions/agentflow)
 [![Coverage](https://img.shields.io/badge/coverage-74%25-yellow.svg)](#)
 
-**10xScale Agentflow** is a lightweight Python framework for building intelligent agents and orchestrating multi-agent workflows. It's an **LLM-agnostic orchestration tool** that works with any LLM provider—use LiteLLM, native SDKs from OpenAI, Google Gemini, Anthropic Claude, or any other provider. You choose your LLM library; 10xScale Agentflow provides the workflow orchestration.
+**10xScale Agentflow** is a lightweight Python framework for building intelligent agents and orchestrating multi-agent workflows. It's an **LLM-agnostic orchestration tool** that works with native SDKs from OpenAI, Google Gemini, Anthropic Claude, or any other provider. You choose your LLM library; 10xScale Agentflow provides the workflow orchestration.
 
 ---
 
 ## ✨ Key Features
 
 - **⚡ Agent Class** - Build complete agents in 10-30 lines of code (new in v0.5.3!)
-- **🎯 LLM-Agnostic Orchestration** - Works with any LLM provider (LiteLLM, OpenAI, Gemini, Claude, native SDKs)
+- **🎯 LLM-Agnostic Orchestration** - Works with any LLM provider (OpenAI, Gemini, Claude, native SDKs)
 - **🤖 Multi-Agent Workflows** - Build complex agent systems with your choice of orchestration patterns
 - **📊 Structured Responses** - Get `content`, optional `thinking`, and `usage` in a standardized format
 - **🌊 Streaming Support** - Real-time incremental responses with delta updates
@@ -155,9 +155,6 @@ pip install 10xscale-agentflow[mcp]
 # Google GenAI adapter (google-genai SDK)
 pip install 10xscale-agentflow[google-genai]
 
-# LiteLLM for multi-provider LLM support
-pip install 10xscale-agentflow[litellm]
-
 # Composio tools (adapter)
 pip install 10xscale-agentflow[composio]
 
@@ -170,7 +167,7 @@ pip install 10xscale-agentflow[kafka]     # Kafka publisher
 pip install 10xscale-agentflow[rabbitmq]  # RabbitMQ publisher
 
 # Multiple extras
-pip install 10xscale-agentflow[pg_checkpoint,mcp,google-genai,litellm,composio,langchain]
+pip install 10xscale-agentflow[pg_checkpoint,mcp,google-genai,composio,langchain]
 ```
 
 ### Environment Setup
@@ -196,7 +193,7 @@ If you have a `.env` file, it will be auto-loaded (via `python-dotenv`).
 | Approach | Best For | Lines of Code |
 |----------|----------|---------------|
 | **Agent Class** ⭐ | Most use cases, rapid development | 10-30 lines |
-| **Custom Functions** | Complex custom logic, non-LiteLLM providers | 50-150 lines |
+| **Custom Functions** | Complex custom logic, custom SDK integrations | 50-150 lines |
 
 > **Recommendation:** Start with the Agent class. It handles 90% of use cases with minimal code.
 
@@ -260,7 +257,7 @@ For maximum control, use custom functions instead of the Agent class:
 
 ```python
 from dotenv import load_dotenv
-from litellm import acompletion
+from openai import AsyncOpenAI
 
 from agentflow.checkpointer import InMemoryCheckpointer
 from agentflow.graph import StateGraph, ToolNode
@@ -270,6 +267,7 @@ from agentflow.utils.constants import END
 from agentflow.utils.converter import convert_messages
 
 load_dotenv()
+client = AsyncOpenAI()
 
 
 # Define a tool with dependency injection
@@ -305,14 +303,14 @@ async def main_agent(state: AgentState):
             and len(state.context) > 0
             and state.context[-1].role == "tool"
     ):
-        response = await acompletion(
-            model="gemini/gemini-2.5-flash",
+        response = await client.chat.completions.create(
+            model="gpt-4o-mini",
             messages=messages,
         )
     else:
         tools = await tool_node.all_tools()
-        response = await acompletion(
-            model="gemini/gemini-2.5-flash",
+        response = await client.chat.completions.create(
+            model="gpt-4o-mini",
             messages=messages,
             tools=tools,
         )
@@ -390,7 +388,7 @@ python examples/react/react_weather_agent.py
 ```
 
 Notes:
-- The example uses `litellm`'s `acompletion` function — set `model` to a provider/model available in your environment (for example `gemini/gemini-2.5-flash` or other supported model strings).
+- The example uses the OpenAI async client. Set `OPENAI_API_KEY` and choose a model available in your account.
 - `InMemoryCheckpointer` is for demo/testing only. Replace with a persistent checkpointer for production.
 
 ---
@@ -427,7 +425,7 @@ from typing import Any
 
 from dotenv import load_dotenv
 from fastmcp import Client
-from litellm import acompletion
+from openai import AsyncOpenAI
 
 from agentflow.checkpointer import InMemoryCheckpointer
 from agentflow.graph import StateGraph, ToolNode
@@ -437,6 +435,7 @@ from agentflow.utils.constants import END
 from agentflow.utils.converter import convert_messages
 
 load_dotenv()
+client = AsyncOpenAI()
 
 checkpointer = InMemoryCheckpointer()
 
@@ -466,8 +465,8 @@ async def main_agent(state: AgentState):
     # Get all available tools (including MCP tools)
     tools = await tool_node.all_tools()
 
-    response = await acompletion(
-        model="gemini/gemini-2.0-flash",
+    response = await client.chat.completions.create(
+        model="gpt-4o-mini",
         messages=messages,
         tools=tools,
     )
@@ -550,7 +549,7 @@ import asyncio
 import logging
 
 from dotenv import load_dotenv
-from litellm import acompletion
+from openai import AsyncOpenAI
 
 from agentflow.checkpointer import InMemoryCheckpointer
 from agentflow.graph import StateGraph, ToolNode
@@ -560,6 +559,7 @@ from agentflow.utils.constants import END
 from agentflow.utils.converter import convert_messages
 
 load_dotenv()
+client = AsyncOpenAI()
 checkpointer = InMemoryCheckpointer()
 
 
@@ -594,15 +594,15 @@ async def main_agent(state: AgentState, config: dict):
             and len(state.context) > 0
             and state.context[-1].role == "tool"
     ):
-        response = await acompletion(
-            model="gemini/gemini-2.5-flash",
+        response = await client.chat.completions.create(
+            model="gpt-4o-mini",
             messages=messages,
             stream=is_stream,
         )
     else:
         tools = await tool_node.all_tools()
-        response = await acompletion(
-            model="gemini/gemini-2.5-flash",
+        response = await client.chat.completions.create(
+            model="gpt-4o-mini",
             messages=messages,
             tools=tools,
             stream=is_stream,

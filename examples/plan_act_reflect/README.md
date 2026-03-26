@@ -51,7 +51,7 @@ python examples/plan_act_reflect/basic_plan_act_reflect.py
 python examples/plan_act_reflect/tool_plan_act_reflect.py
 ```
 
-No API keys required (purely deterministic mock tools). You can extend PLAN to call real LLMs (LiteLLM) and emit structured tool requests.
+No API keys required (purely deterministic mock tools). You can extend PLAN to call real LLMs through your preferred SDK and emit structured tool requests.
 
 ## Extending
 

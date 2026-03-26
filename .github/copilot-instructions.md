@@ -30,7 +30,7 @@ Use these repo-specific notes to be productive quickly when generating code, doc
 
 ## Authoritative examples
 - Minimal graph pattern: `tests/graph/test_graph.py` shows `add_node` → `set_entry_point` → `add_edge(..., END)` → `compile()` → `invoke()`.
-- Tooling + routing + LiteLLM: `examples/react/react_weather_agent.py`.
+- Tooling + routing: `examples/react/react_weather_agent.py`.
 - MCP tools: `examples/react-mcp/`.
 - Custom state: `examples/custom-state/`.
 - Memory integration: `examples/memory/`.
@@ -41,7 +41,7 @@ Use these repo-specific notes to be productive quickly when generating code, doc
 ## Conventions
 - **Messages**: Create via `Message.text_message(...)` or `Message.tool_message(...)`. Use `ModelResponseConverter` to wrap LLM responses.
 - **Content blocks** (`state/message_block.py`): TextBlock, ImageBlock, AudioBlock, VideoBlock, DocumentBlock, DataBlock, ToolCallBlock, ToolResultBlock, ReasoningBlock, AnnotationBlock, ErrorBlock, RemoteToolCallBlock, MediaRef.
-- **LLM adapters** (`adapters/llm/`): `ModelResponseConverter` auto-detects LiteLLM, OpenAI SDK responses. Use `convert_messages()` from `utils/converter.py` to prepare messages for LLM APIs.
+- **LLM adapters** (`adapters/llm/`): `ModelResponseConverter` supports the built-in OpenAI, OpenAI Responses, and Google GenAI converters. Use `convert_messages()` from `utils/converter.py` to prepare messages for LLM APIs.
 - **ID generation**: DI-driven via InjectQ keys: `generated_id_type` ("string"|"int"|"bigint") and optional `generated_id` (value/awaitable). See `utils/id_generator.py`.
 - **Reducers** (`state/reducers.py`): Use `add_messages`, `replace_messages`, `append_items` for state merging.
 - **Conditional routing**: Returns labels that must match `path_map` keys; include `END` to terminate.
@@ -55,7 +55,6 @@ Use these repo-specific notes to be productive quickly when generating code, doc
 - **Examples**: Most examples require an LLM API key (e.g., `OPENAI_API_KEY`) set in `.env` and a valid model string for your chosen provider.
 
 ## Optional integrations (extras in `pyproject.toml`)
-- `litellm`: LiteLLM for multi-provider LLM support.
 - `pg_checkpoint`: Postgres (`asyncpg`) + Redis cache (`redis`); use `checkpointer.PgCheckpointer`.
 - `mcp`: Model Context Protocol (FastMCP + mcp); pass an MCP client to `ToolNode`.
 - `composio`, `langchain`: adapters for external tool registries via `ToolNode`.

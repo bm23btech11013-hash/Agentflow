@@ -38,7 +38,7 @@ Install the required packages:
 
 ```bash
 # Core dependencies
-pip install 10xscale-agentflow litellm mem0ai python-dotenv
+pip install 10xscale-agentflow mem0ai python-dotenv
 
 # Optional: For local development/testing
 pip install qdrant-client
@@ -261,7 +261,7 @@ logging.basicConfig(level=logging.DEBUG)
 - [10xScale Agentflow Documentation](https://github.com/10xHub/agentflow)
 - [Mem0 Documentation](https://docs.mem0.ai/)
 - [Qdrant Documentation](https://qdrant.tech/documentation/)
-- [LiteLLM Documentation](https://docs.litellm.ai/)
+- [OpenAI Python SDK](https://github.com/openai/openai-python)
 
 ## 💡 Next Steps
 

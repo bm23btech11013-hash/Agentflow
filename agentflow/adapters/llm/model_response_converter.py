@@ -32,7 +32,7 @@ class ModelResponseConverter:
             response (Any | Callable[..., Any]): The LLM response or a callable returning
                 a response.
             converter (BaseConverter | str): Converter instance or string identifier
-                (e.g., "litellm").
+                (e.g., "openai").
 
         Raises:
             ValueError: If the converter is not supported.
@@ -40,13 +40,7 @@ class ModelResponseConverter:
         self.response = response
 
         if isinstance(converter, str):
-            if converter == "litellm":
-                from .litellm_converter import LiteLLMConverter
-
-                self.converter = LiteLLMConverter()
-                logger.debug("Using LiteLLMConverter for response conversion")
-
-            elif converter == "openai":
+            if converter == "openai":
                 from .openai_converter import OpenAIConverter
 
                 self.converter = OpenAIConverter()
@@ -68,7 +62,7 @@ class ModelResponseConverter:
                 logger.error(f"Unsupported converter: {converter}")
                 raise ValueError(
                     f"Unsupported converter: {converter}. "
-                    "Supported: 'openai', 'openai_responses', 'google', 'litellm'"
+                    "Supported: 'openai', 'openai_responses', 'google'"
                 )
 
         elif isinstance(converter, BaseConverter):

@@ -49,8 +49,6 @@ jobs:
           source .venv/bin/activate
           pip install --upgrade pip
           uv sync --dev
-          # install optional extras used by some tests (eg. LiteLLM)
-          pip install -e ".[litellm]"
 
       - name: Run pre-commit
         run: uv run pre-commit run --all-files

@@ -13,6 +13,7 @@ class ConverterType(str, Enum):
     OPENAI = "openai"
     OPENAI_RESPONSES = "openai_responses"
     LITELLM = "litellm"
+    ANTHROPIC = "anthropic"
     GOOGLE = "google"
     CUSTOM = "custom"
 

@@ -19,8 +19,7 @@ def _parse_model_provider(model: str) -> tuple[str, str]:
 
     Supports:
       - ``"gemini-2.5-flash"``          → ``("google", "gemini-2.5-flash")``
-      - ``"gemini/gemini-2.5-flash"``    → ``("google", "gemini-2.5-flash")``
-        (legacy LiteLLM syntax)
+            - ``"gemini/gemini-2.5-flash"``    → ``("google", "gemini-2.5-flash")``
       - ``"gpt-4o"``                     → ``("openai", "gpt-4o")``
       - ``"openai/gpt-4o"``              → ``("openai", "gpt-4o")``
 
@@ -49,14 +48,14 @@ def _parse_model_provider(model: str) -> tuple[str, str]:
 class LLMCallerMixin:
     """Mixin providing shared LLM calling logic for criteria.
 
-    Uses Google GenAI SDK as the primary path, then litellm, then OpenAI
-    as fallback.  All LLM-based criteria inherit from this.
+    Uses Google GenAI SDK as the primary path, then OpenAI as fallback.
+    All LLM-based criteria inherit from this.
     """
 
     async def _call_llm_json(self, prompt: str) -> dict:
         """Call LLM and return full parsed JSON dict.
 
-        Tries Google GenAI first, then litellm, then OpenAI. If none
+        Tries Google GenAI first, then OpenAI. If none
         are available, returns a default dict with score 0.5.
 
         Args:
@@ -71,11 +70,6 @@ class LLMCallerMixin:
             result = await self._call_google_json(model_name, prompt)
             if result is not None:
                 return result
-
-        # litellm path — works with any provider litellm supports
-        result = await self._call_litellm_json(self.config.judge_model, prompt)
-        if result is not None:
-            return result
 
         # OpenAI path (primary for OpenAI models, fallback for Google failures)
         result = await self._call_openai_json(
@@ -118,38 +112,6 @@ class LLMCallerMixin:
             return None
         except Exception as e:
             logger.warning("Google GenAI call failed: %s", e)
-            return None
-
-    async def _call_litellm_json(self, model: str, prompt: str) -> dict | None:
-        """Call LLM via litellm and return parsed JSON dict, or None on failure.
-
-        litellm supports Google Gemini (``gemini/model``), OpenAI, Anthropic,
-        and many other providers with a unified interface.  It uses the
-        ``GEMINI_API_KEY`` / ``OPENAI_API_KEY`` environment variables
-        automatically.
-        """
-        try:
-            import litellm
-
-            # Ensure model uses litellm provider prefix for Gemini
-            litellm_model = model
-            if "/" not in model and model.lower().startswith("gemini"):
-                litellm_model = f"gemini/{model}"
-
-            response = await litellm.acompletion(
-                model=litellm_model,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.3,
-                response_format={"type": "json_object"},
-            )
-            text = (response.choices[0].message.content or "").strip()
-            if not text:
-                raise ValueError("litellm returned empty content")
-            return json.loads(text)
-        except ImportError:
-            return None
-        except Exception as e:
-            logger.warning("litellm call failed: %s", e)
             return None
 
     async def _call_openai_json(self, model: str, prompt: str) -> dict | None:

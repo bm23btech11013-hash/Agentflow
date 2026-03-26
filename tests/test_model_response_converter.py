@@ -13,7 +13,7 @@ from agentflow.state.message import Message
 class TestModelResponseConverter:
     """Test suite for ModelResponseConverter."""
 
-    @patch('agentflow.adapters.llm.litellm_converter.LiteLLMConverter')
+    @patch('agentflow.adapters.llm.openai_converter.OpenAIConverter')
     def test_initialization_with_string_converter(self, MockConverter):
         """Test initialization with string converter identifier."""
         response = "test response"
@@ -21,7 +21,7 @@ class TestModelResponseConverter:
         mock_converter_instance = Mock(spec=BaseConverter)
         MockConverter.return_value = mock_converter_instance
         
-        converter = ModelResponseConverter(response, "litellm")
+        converter = ModelResponseConverter(response, "openai")
         
         assert converter.response == "test response"
         assert converter.converter == mock_converter_instance
@@ -453,15 +453,15 @@ class TestModelResponseConverter:
             assert len(results) == 1
             assert results[0].text() == f"Stream: stream_{i}"
 
-    @patch('agentflow.adapters.llm.litellm_converter.LiteLLMConverter')
-    def test_litellm_converter_import_and_creation(self, MockLiteLLM):
-        """Test that LiteLLMConverter is properly imported and created."""
+    @patch('agentflow.adapters.llm.google_genai_converter.GoogleGenAIConverter')
+    def test_google_converter_import_and_creation(self, MockGoogle):
+        """Test that GoogleGenAIConverter is properly imported and created."""
         mock_instance = Mock(spec=BaseConverter)
-        MockLiteLLM.return_value = mock_instance
+        MockGoogle.return_value = mock_instance
         
-        converter = ModelResponseConverter("test", "litellm")
+        converter = ModelResponseConverter("test", "google")
         
-        MockLiteLLM.assert_called_once()
+        MockGoogle.assert_called_once()
         assert converter.converter == mock_instance
 
     @pytest.mark.asyncio
