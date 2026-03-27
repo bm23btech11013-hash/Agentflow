@@ -36,76 +36,103 @@ class AgentGoogleMixin:
             content = message.get("content", "")
 
             if role == "system":
-                if system_instruction is None:
-                    system_instruction = str(content)
-                else:
-                    system_instruction += "\n" + str(content)
-                continue
-
-            if role == "assistant" and message.get("tool_calls"):
-                parts: list[types.Part] = []
-                text = str(content) if content else ""
-                if text:
-                    parts.append(types.Part(text=text))
-
-                first_fc = True
-                for tool_call in message["tool_calls"]:
-                    function = tool_call.get("function", {})
-                    function_name = function.get("name", "")
-                    try:
-                        function_args = json.loads(function.get("arguments", "{}"))
-                    except (json.JSONDecodeError, TypeError):
-                        function_args = {}
-                    part = types.Part(
-                        function_call=types.FunctionCall(
-                            name=function_name,
-                            args=function_args,
-                        )
-                    )
-                    # Gemini 2.5/3 thinking models require a thought_signature on
-                    # the first function call part when replaying history. Use the
-                    # real signature stored during response conversion when available;
-                    # fall back to the officially documented bypass value otherwise.
-                    if first_fc:
-                        sig_b64 = tool_call.get("thought_signature")
-                        if sig_b64:
-                            part.thought_signature = base64.b64decode(sig_b64)
-                        else:
-                            part.thought_signature = b"skip_thought_signature_validator"
-                        first_fc = False
-                    parts.append(part)
-
-                google_contents.append(types.Content(role="model", parts=parts))
-                continue
-
-            if role == "tool":
-                tool_call_id = message.get("tool_call_id", "")
-                function_name = call_id_to_name.get(
-                    tool_call_id,
-                    message.get("name", "") or tool_call_id or "unknown_function",
-                )
-                google_contents.append(
-                    types.Content(
-                        role="user",
-                        parts=[
-                            types.Part.from_function_response(
-                                name=function_name,
-                                response={"result": str(content) if content else ""},
-                            )
-                        ],
-                    )
-                )
-                continue
-
-            google_role = "model" if role == "assistant" else "user"
-            google_contents.append(
-                types.Content(
-                    role=google_role,
-                    parts=[types.Part(text=str(content) if content else "")],
-                )
-            )
+                system_instruction = self._handle_system_message(content, system_instruction)
+            elif role == "assistant" and message.get("tool_calls"):
+                google_contents.append(self._handle_assistant_with_tools(message))
+            elif role == "tool":
+                google_contents.append(self._handle_tool_message(message, content, call_id_to_name))
+            else:
+                google_role = "model" if role == "assistant" else "user"
+                google_contents.append(self._handle_regular_message(content, google_role))
 
         return system_instruction, google_contents
+
+    def _handle_system_message(self, content: Any, system_instruction: str | None) -> str | None:
+        """Handle system role messages and accumulate system instruction."""
+        if system_instruction is None:
+            return str(content)
+        return system_instruction + "\n" + str(content)
+
+    def _handle_assistant_with_tools(self, message: dict[str, Any]) -> Any:
+        """Handle assistant message with tool calls."""
+        from google.genai import types
+
+        parts: list[types.Part] = []
+        content = message.get("content", "")
+        text = str(content) if content else ""
+
+        if text:
+            parts.append(types.Part(text=text))
+
+        first_fc = True
+        for tool_call in message["tool_calls"]:
+            part = self._create_function_call_part(tool_call, first_fc)
+            if first_fc:
+                self._set_thought_signature(part, tool_call)
+                first_fc = False
+            parts.append(part)
+
+        return types.Content(role="model", parts=parts)
+
+    def _create_function_call_part(self, tool_call: dict[str, Any], is_first: bool = False) -> Any:
+        """Create a FunctionCall part from a tool call."""
+        from google.genai import types
+
+        function = tool_call.get("function", {})
+        function_name = function.get("name", "")
+        try:
+            function_args = json.loads(function.get("arguments", "{}"))
+        except (json.JSONDecodeError, TypeError):
+            function_args = {}
+
+        return types.Part(
+            function_call=types.FunctionCall(
+                name=function_name,
+                args=function_args,
+            )
+        )
+
+    def _set_thought_signature(self, part: Any, tool_call: dict[str, Any]) -> None:
+        """Set thought signature on function call part for Gemini 2.5/3 thinking models."""
+        # Gemini 2.5/3 thinking models require a thought_signature on
+        # the first function call part when replaying history. Use the
+        # real signature stored during response conversion when available;
+        # fall back to the officially documented bypass value otherwise.
+        sig_b64 = tool_call.get("thought_signature")
+        if sig_b64:
+            part.thought_signature = base64.b64decode(sig_b64)
+        else:
+            part.thought_signature = b"skip_thought_signature_validator"
+
+    def _handle_tool_message(
+        self, message: dict[str, Any], content: Any, call_id_to_name: dict[str, str]
+    ) -> Any:
+        """Handle tool role message."""
+        from google.genai import types
+
+        tool_call_id = message.get("tool_call_id", "")
+        function_name = call_id_to_name.get(
+            tool_call_id,
+            message.get("name", "") or tool_call_id or "unknown_function",
+        )
+        return types.Content(
+            role="user",
+            parts=[
+                types.Part.from_function_response(
+                    name=function_name,
+                    response={"result": str(content) if content else ""},
+                )
+            ],
+        )
+
+    def _handle_regular_message(self, content: Any, role: str) -> Any:
+        """Handle regular text messages (assistant or user)."""
+        from google.genai import types
+
+        return types.Content(
+            role=role,
+            parts=[types.Part(text=str(content) if content else "")],
+        )
 
     def _convert_tools_to_google_format(self, tools: list) -> list:
         """Convert OpenAI-style tool definitions into Google FunctionDeclarations."""
