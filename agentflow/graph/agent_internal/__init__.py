@@ -4,7 +4,7 @@ This package keeps Agent's public import path stable while splitting its
 provider-specific and execution-specific behavior into smaller modules.
 """
 
-from .constants import REASONING_DEFAULT
+from .constants import REASONING_DEFAULT, RetryConfig
 from .execution import AgentExecutionMixin
 from .google import AgentGoogleMixin
 from .openai import AgentOpenAIMixin
@@ -17,4 +17,5 @@ __all__ = [
     "AgentGoogleMixin",
     "AgentOpenAIMixin",
     "AgentProviderMixin",
+    "RetryConfig",
 ]

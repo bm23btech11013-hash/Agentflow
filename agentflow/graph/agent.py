@@ -12,7 +12,7 @@ from agentflow.graph.base_agent import BaseAgent
 from agentflow.graph.tool_node import ToolNode
 from agentflow.state.message import Message
 
-from .agent_internal.constants import REASONING_DEFAULT
+from .agent_internal.constants import DEFAULT_RETRY_CONFIG, REASONING_DEFAULT, RetryConfig
 from .agent_internal.execution import AgentExecutionMixin
 from .agent_internal.google import AgentGoogleMixin
 from .agent_internal.openai import AgentOpenAIMixin
@@ -88,6 +88,8 @@ class Agent(
         trim_context: bool = False,
         tools_tags: set[str] | None = None,
         reasoning_config: dict[str, Any] | bool | None = REASONING_DEFAULT,  # type: ignore
+        retry_config: RetryConfig | bool | None = True,
+        fallback_models: list[str | tuple[str, str]] | None = None,
         **kwargs,
     ):
         """Initialize an Agent node.
@@ -129,6 +131,25 @@ class Agent(
                     reasoning_config={"effort": "high"}          # high, both providers
                     reasoning_config={"effort": "low", "summary": "auto"}  # OpenAI: low+summary
                     reasoning_config={"thinking_budget": 5000}   # Google exact budget
+            retry_config: Controls automatic retry with exponential back-off for
+                transient LLM errors (429, 500, 502, 503, 529).  Default is
+                ``True`` which uses ``RetryConfig()`` (3 retries, 1 s initial
+                delay, 2x backoff, 30 s cap).  Pass ``False`` or ``None`` to
+                disable.  Pass a ``RetryConfig`` instance for fine-grained
+                control::
+
+                    retry_config = RetryConfig(max_retries=5, initial_delay=2.0)
+                    retry_config = False  # disable retries entirely
+
+            fallback_models: Ordered list of fallback models to try when the
+                primary model exhausts all retries.  Each entry is either a
+                plain model string (inherits the agent's provider) or a
+                ``(model, provider)`` tuple for cross-provider fallback::
+
+                    fallback_models = ["gpt-4o-mini"]
+                    fallback_models = [("gemini-2.0-flash", "google")]
+                    fallback_models = ["gpt-4o-mini", ("gemini-2.0-flash", "google")]
+
             **llm_kwargs: Additional provider-specific parameters
                 (temperature, max_tokens, top_p, or model args, organization_id, project_id).
 
@@ -181,6 +202,17 @@ class Agent(
                 model="llama3:70b",
                 provider="openai",
                 base_url="http://localhost:11434/v1",
+            )
+
+            # With retry and fallback
+            resilient_agent = Agent(
+                model="gemini-2.5-flash",
+                provider="google",
+                retry_config=RetryConfig(max_retries=5, initial_delay=2.0),
+                fallback_models=[
+                    "gemini-2.0-flash",  # same provider
+                    ("gpt-4o-mini", "openai"),  # cross-provider fallback
+                ],
             )
             ```
         """
@@ -235,6 +267,23 @@ class Agent(
         self.reasoning_config: dict[str, Any] | None = (
             None if (reasoning_config is False or reasoning_config is None) else reasoning_config
         )  # type: ignore
+
+        # Retry & fallback configuration
+        if retry_config is True:
+            self.retry_config: RetryConfig | None = DEFAULT_RETRY_CONFIG
+        elif isinstance(retry_config, RetryConfig):
+            self.retry_config = retry_config
+        else:
+            self.retry_config = None
+
+        # Normalise fallback_models to list[tuple[str, str | None]]
+        self.fallback_models: list[tuple[str, str | None]] = []
+        if fallback_models:
+            for entry in fallback_models:
+                if isinstance(entry, str):
+                    self.fallback_models.append((entry, None))  # inherit provider
+                else:
+                    self.fallback_models.append(tuple(entry))  # type: ignore[arg-type]
 
         logger.info(
             f"Agent initialized: model={model}, provider={self.provider}, "
