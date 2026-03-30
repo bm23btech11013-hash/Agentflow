@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
@@ -13,6 +14,8 @@ from agentflow.graph.tool_node import ToolNode
 from agentflow.state import AgentState
 from agentflow.state.base_context import BaseContextManager
 from agentflow.utils.converter import convert_messages
+
+from .constants import RetryConfig
 
 
 logger = logging.getLogger("agentflow.agent")
@@ -73,6 +76,162 @@ class AgentExecutionMixin:
                 "Skipping context trimming."
             )
             return state
+
+    # ------------------------------------------------------------------
+    # Retry / fallback helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _extract_status_code(exc: Exception) -> int | None:
+        """Best-effort extraction of an HTTP status code from an SDK exception."""
+        # OpenAI SDK: openai.APIStatusError has .status_code
+        status = getattr(exc, "status_code", None)
+        if status is not None:
+            return int(status)
+        # Google GenAI and generic HTTP errors often embed a code attribute
+        code = getattr(exc, "code", None)
+        if code is not None:
+            try:
+                return int(code)
+            except (TypeError, ValueError):
+                pass
+        # Fallback: inspect the string representation for common patterns
+        exc_str = str(exc)
+        for code in (503, 502, 500, 429, 529):
+            if str(code) in exc_str:
+                return code
+        return None
+
+    def _is_retryable_error(self, exc: Exception, retry_cfg: RetryConfig) -> bool:
+        """Determine whether *exc* is a transient error worth retrying."""
+        status = self._extract_status_code(exc)
+        if status is not None and status in retry_cfg.retryable_status_codes:
+            return True
+        # Connection-level / transport errors are always retryable
+        if isinstance(exc, ConnectionError | TimeoutError | OSError):
+            return True
+        exc_name = type(exc).__name__.lower()
+        return any(
+            keyword in exc_name
+            for keyword in ("timeout", "connection", "unavailable", "serviceunav")
+        )
+
+    async def _call_llm_with_retry(  # noqa: PLR0912
+        self,
+        messages: list[dict[str, Any]],
+        tools: list | None = None,
+        stream: bool = False,
+        **kwargs: Any,
+    ) -> Any:
+        """Wrap ``_call_llm`` with retry + exponential back-off + fallback models.
+
+        Execution order:
+        1. Try the primary model up to ``retry_config.max_retries`` times.
+        2. For each fallback model, try up to ``retry_config.max_retries`` times.
+        3. If everything fails, raise the last exception.
+        """
+        retry_cfg: RetryConfig | None = getattr(self, "retry_config", None)
+        fallback_models: list[tuple[str, str | None]] = getattr(self, "fallback_models", [])
+
+        # Fast-path: no retry config at all → single attempt, no catch
+        if retry_cfg is None and not fallback_models:
+            return await self._call_llm(messages, tools, stream, **kwargs)
+
+        max_retries = retry_cfg.max_retries if retry_cfg else 0
+
+        # Build the ordered attempt list: primary + fallbacks
+        attempts: list[tuple[str, str, Any, str | None]] = [
+            (self.model, self.provider, self.client, getattr(self, "base_url", None)),
+        ]
+        for fb_model, fb_provider in fallback_models:
+            attempts.append((fb_model, fb_provider or self.provider, None, None))
+
+        last_exc: Exception | None = None
+
+        for attempt_idx, (model, provider, fallback_client, base_url) in enumerate(attempts):
+            is_fallback = attempt_idx > 0
+
+            if is_fallback:
+                logger.info(
+                    "Switching to fallback model %s (provider=%s)",
+                    model,
+                    provider,
+                )
+
+            for retry in range(max_retries + 1):  # 0 .. max_retries
+                try:
+                    if is_fallback:
+                        # Temporarily swap model/provider/client for the call
+                        orig_model, orig_provider, orig_client, orig_base_url = (
+                            self.model,
+                            self.provider,
+                            self.client,
+                            getattr(self, "base_url", None),
+                        )
+                        self.model = model
+                        self.provider = provider
+                        self.base_url = base_url
+                        active_client = fallback_client
+                        if active_client is None:
+                            active_client = self._create_client(provider, base_url)
+                        self.client = active_client
+                        try:
+                            result = await self._call_llm(messages, tools, stream, **kwargs)
+                        finally:
+                            # Restore originals regardless of outcome
+                            self.model = orig_model
+                            self.provider = orig_provider
+                            self.client = orig_client
+                            self.base_url = orig_base_url
+                    else:
+                        result = await self._call_llm(messages, tools, stream, **kwargs)
+
+                    if is_fallback or retry > 0:
+                        logger.info(
+                            "LLM call succeeded on %s (attempt %d/%d, model_index=%d)",
+                            model,
+                            retry + 1,
+                            max_retries + 1,
+                            attempt_idx,
+                        )
+                    return result
+
+                except Exception as exc:
+                    last_exc = exc
+
+                    if retry_cfg is None or not self._is_retryable_error(exc, retry_cfg):
+                        logger.warning(
+                            "Non-retryable error from %s: %s",
+                            model,
+                            exc,
+                        )
+                        # Non-retryable → skip remaining retries, try next fallback
+                        break
+
+                    if retry < max_retries:
+                        delay = min(
+                            retry_cfg.initial_delay * (retry_cfg.backoff_factor**retry),
+                            retry_cfg.max_delay,
+                        )
+                        logger.warning(
+                            "Retryable error from %s (attempt %d/%d): %s. Retrying in %.1fs …",
+                            model,
+                            retry + 1,
+                            max_retries + 1,
+                            exc,
+                            delay,
+                        )
+                        await asyncio.sleep(delay)
+                    else:
+                        logger.warning(
+                            "All %d retries exhausted for model %s.",
+                            max_retries + 1,
+                            model,
+                        )
+
+        # Every model exhausted → re-raise the last exception
+        assert last_exc is not None  # noqa: S101
+        raise last_exc
 
     async def _call_llm(
         self,
@@ -158,10 +317,10 @@ class AgentExecutionMixin:
         is_stream = config.get("is_stream", False)
 
         if state.context and state.context[-1].role == "tool":
-            response = await self._call_llm(messages=messages, stream=is_stream)
+            response = await self._call_llm_with_retry(messages=messages, stream=is_stream)
         else:
             tools = await self._resolve_tools(container)
-            response = await self._call_llm(
+            response = await self._call_llm_with_retry(
                 messages=messages,
                 tools=tools if tools else None,
                 stream=is_stream,

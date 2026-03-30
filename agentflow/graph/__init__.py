@@ -123,6 +123,7 @@ sophisticated agent workflows while maintaining simplicity for common use cases.
 """
 
 from .agent import Agent
+from .agent_internal.constants import RetryConfig
 from .base_agent import BaseAgent
 from .compiled_graph import CompiledGraph
 from .edge import Edge
@@ -137,6 +138,7 @@ __all__ = [
     "CompiledGraph",
     "Edge",
     "Node",
+    "RetryConfig",
     "StateGraph",
     "ToolNode",
 ]
