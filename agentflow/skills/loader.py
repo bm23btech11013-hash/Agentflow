@@ -89,8 +89,24 @@ def discover_skills(skills_dir: str) -> list[SkillMeta]:  # noqa: PLR0912
             triggers = []
 
         resources: list[str] = []
-        for rel_path in meta_block.get("resources") or frontmatter.get("resources", []):
+        raw_resources = meta_block.get("resources") or frontmatter.get("resources", [])
+        if not isinstance(raw_resources, list):
+            raw_resources = []
+        for rel_path in raw_resources:
+            rel_path = str(rel_path).strip()
+            if not rel_path:
+                continue
+            # Path traversal protection: reject absolute or parent-escaping paths
+            if ".." in rel_path or rel_path.startswith(("/", "\\")):
+                logger.warning("Skipping unsafe resource path for skill '%s': %s", name, rel_path)
+                continue
             abs_path = skill_dir / rel_path
+            # Ensure resolved path stays within the skill directory
+            try:
+                abs_path.resolve().relative_to(skill_dir.resolve())
+            except ValueError:
+                logger.warning("Resource path escapes skill directory for '%s': %s", name, rel_path)
+                continue
             if abs_path.is_file():
                 resources.append(rel_path)
             else:
@@ -116,8 +132,8 @@ def discover_skills(skills_dir: str) -> list[SkillMeta]:  # noqa: PLR0912
             )
             priority = 0
 
-        results.append(
-            SkillMeta(
+        try:
+            skill_meta = SkillMeta(
                 name=name,
                 description=description,
                 triggers=triggers,
@@ -127,8 +143,12 @@ def discover_skills(skills_dir: str) -> list[SkillMeta]:  # noqa: PLR0912
                 skill_dir=str(skill_dir),
                 skill_file=str(skill_file),
             )
-        )
-        logger.info("Discovered skill: '%s' (%d resource(s))", name, len(resources))
+        except (ValueError, Exception) as exc:
+            logger.warning("Skipping '%s': validation failed: %s", entry, exc)
+            continue
+
+        results.append(skill_meta)
+        logger.info("Discovered skill: '%s' (%d resource(s))", skill_meta.name, len(resources))
 
     return results
 
@@ -152,7 +172,17 @@ def load_skill_content(meta: SkillMeta) -> str:
 
 def load_resource(meta: SkillMeta, rel_path: str) -> str | None:
     """Read a resource file relative to the skill directory."""
-    abs_path = Path(meta.skill_dir) / rel_path
+    if ".." in rel_path or rel_path.startswith(("/", "\\")):
+        logger.warning("Blocked unsafe resource path: %s", rel_path)
+        return None
+    skill_root = Path(meta.skill_dir).resolve()
+    abs_path = (Path(meta.skill_dir) / rel_path).resolve()
+    # Ensure the resolved path stays within the skill directory
+    try:
+        abs_path.relative_to(skill_root)
+    except ValueError:
+        logger.warning("Resource path escapes skill directory: %s", abs_path)
+        return None
     try:
         return abs_path.read_text(encoding="utf-8")
     except OSError:
@@ -180,7 +210,16 @@ def _parse_frontmatter(skill_file: str) -> dict[str, Any] | None:
 
     raw_yaml = content[3:end].strip()
     try:
-        return yaml.safe_load(raw_yaml) or {}
+        parsed = yaml.safe_load(raw_yaml)
     except yaml.YAMLError as exc:
         logger.error("YAML parse error in %s: %s", skill_file, exc)
         return None
+
+    if parsed is None:
+        return {}
+    if not isinstance(parsed, dict):
+        logger.error(
+            "Frontmatter in %s is not a mapping (got %s)", skill_file, type(parsed).__name__
+        )
+        return None
+    return parsed

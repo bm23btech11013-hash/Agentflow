@@ -82,6 +82,20 @@ class TestConverterUtils:
         }
         assert result == expected
 
+    def test_convert_dict_tool_message_with_none_content(self):
+        """Test _convert_dict tolerates malformed tool messages with missing content."""
+        message = Message.text_message("placeholder", "tool")
+        message.content = None # type: ignore
+
+        result = _convert_dict(message)
+
+        expected = {
+            "role": "tool",
+            "content": "",
+            "tool_call_id": ""
+        }
+        assert result == expected
+
     def test_convert_dict_assistant_with_tool_calls(self):
         """Test _convert_dict with assistant message that has tool calls."""
         tool_call_dict = {
@@ -277,6 +291,23 @@ class TestConverterUtils:
         expected = [
             {"role": "system", "content": "You are helpful"},
             {"role": "tool", "content": "Tool executed successfully", "tool_call_id": "call_123"}
+        ]
+        assert result == expected
+
+    def test_convert_messages_with_malformed_tool_message_in_state(self):
+        """Test convert_messages skips crashes for malformed persisted tool messages."""
+        system_prompts = [{"role": "system", "content": "You are helpful"}]
+
+        tool_message = Message.text_message("placeholder", "tool")
+        tool_message.content = None # type: ignore
+
+        state = AgentState(context=[tool_message])
+
+        result = convert_messages(system_prompts, state)
+
+        expected = [
+            {"role": "system", "content": "You are helpful"},
+            {"role": "tool", "content": "", "tool_call_id": ""},
         ]
         assert result == expected
 

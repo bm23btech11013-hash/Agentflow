@@ -84,6 +84,21 @@ class SkillsRegistry:
     def names(self) -> list[str]:
         return sorted(self._skills.keys())
 
+    def unregister(self, name: str) -> bool:
+        """Remove a skill by name. Returns True if it was present."""
+        if name in self._skills:
+            del self._skills[name]
+            self._mtimes.pop(name, None)
+            logger.info("Unregistered skill: '%s'", name)
+            return True
+        return False
+
+    def __len__(self) -> int:
+        return len(self._skills)
+
+    def __contains__(self, name: str) -> bool:
+        return name in self._skills
+
     # -- content loading ----------------------------------------------------
 
     def load_content(self, name: str, hot_reload: bool = True) -> str:

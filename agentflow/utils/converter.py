@@ -18,6 +18,26 @@ if TYPE_CHECKING:
 logger = logging.getLogger("agentflow.utils")
 
 
+def _get_message_content_blocks(message: Message) -> list[Any]:
+    """Return a normalized list of content blocks for a message."""
+    content = getattr(message, "content", None)
+    if content is None:
+        return []
+    if isinstance(content, list):
+        return content
+    return [content]
+
+
+def _has_remote_tool_call_block(blocks: list[Any]) -> bool:
+    """Return True when any block represents a remote tool call."""
+    for block in blocks:
+        if isinstance(block, RemoteToolCallBlock):
+            return True
+        if isinstance(block, dict) and block.get("type") == "remote_tool_call":
+            return True
+    return False
+
+
 def _convert_dict(message: Message) -> dict[str, Any] | None:
     """
     Convert a Message object to a dictionary for LLM/tool payloads.
@@ -30,15 +50,19 @@ def _convert_dict(message: Message) -> dict[str, Any] | None:
     """
     # if any remote tool call exists we are skipping the tool result block
     # as remote tool calls are not supported in the current implementation
-    if RemoteToolCallBlock in message.content:
+    blocks = _get_message_content_blocks(message)
+
+    if _has_remote_tool_call_block(blocks):
         return None
 
     if message.role == "tool":
-        content = message.content
         call_id = ""
-        for i in content:
+        for i in blocks:
             if isinstance(i, ToolResultBlock):
                 call_id = i.call_id
+                break
+            if isinstance(i, dict) and i.get("type") == "tool_result":
+                call_id = str(i.get("call_id", ""))
                 break
 
         return {
