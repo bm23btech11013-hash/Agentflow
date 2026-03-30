@@ -3,14 +3,12 @@
 Start the chat:
     python examples/skills/chat.py
 
-The agent will automatically activate the right skill based on what you type:
+The agent will load the appropriate skill based on what you type:
   - "review my code / find bugs"          → code-review skill
   - "analyse this data / statistics"      → data-analysis skill
   - "help me write / proofread this"      → writing-assistant skill
   - "humanize this / sounds too AI"       → humanizer skill
   - "quit" / "exit" / Ctrl-C             → exit
-
-The prompt shows the currently active skill in brackets: [code-review] You:
 """
 
 from pathlib import Path
@@ -28,6 +26,33 @@ load_dotenv()
 
 SKILLS_DIR = str(Path(__file__).parent / "skills")
 
+
+# ── Custom Tools ───────────────────────────────────────────────────────────
+
+def get_weather(location: str) -> str:
+    """Get the current weather for a location.
+    
+    Args:
+        location: The city or location to get weather for
+        
+    Returns:
+        A string describing the current weather
+    """
+    # Mock weather data
+    weather_data = {
+        "london": "Cloudy, 15°C",
+        "new york": "Sunny, 22°C",
+        "newyork": "Sunny, 22°C",
+        "tokyo": "Rainy, 18°C",
+        "paris": "Partly cloudy, 17°C",
+    }
+    
+    location_lower = location.lower()
+    if location_lower in weather_data:
+        return f"The weather in {location} is: {weather_data[location_lower]}"
+    else:
+        return f"Weather data not available for {location}. Try London, New York, Tokyo, or Paris."
+
 # ── Graph setup ────────────────────────────────────────────────────────────
 
 agent = Agent(
@@ -39,22 +64,21 @@ agent = Agent(
                 "You are a smart, multi-skilled assistant.\n"
                 "You have access to specialised skill modes that give you "
                 "deeper expertise in specific domains.\n\n"
-                "Rules for skill activation:\n"
-                "1. When the user's request matches a skill, ALWAYS call set_skill() "
-                "with that skill name BEFORE doing anything else — even if a different "
-                "skill is already active. auto_deactivate will handle clearing the old one.\n"
+                "Rules for skill usage:\n"
+                "1. When the user's request matches a skill, call set_skill() "
+                "with that skill name to load its instructions.\n"
                 "2. Skills are distinct — each one covers a specific domain. "
                 "Use the available skills table to decide which one fits the request.\n"
-                "3. When the task is done and the user moves to an unrelated topic, "
-                "call clear_skill() to return to general mode."
+                "3. The skill content will be returned directly — use it to guide your response.\n\n"
+                "You also have a get_weather tool for weather queries."
             ),
         }
     ],
+    tools=[get_weather],  # ← Add custom tools here
     skills=SkillConfig(
         skills_dir=SKILLS_DIR,
         inject_trigger_table=True,
         hot_reload=True,
-        auto_deactivate=True,
     ),
     trim_context=True,
 )
@@ -102,37 +126,15 @@ def print_banner(thread_id: str) -> None:
     print("=" * width + "\n")
 
 
-def extract_active_skill(messages: list, current: str | None) -> tuple[str | None, list[str]]:
-    """Scan tool messages for SKILL_ACTIVATED / SKILL_DEACTIVATED markers.
-
-    Returns (new_active_skill, list_of_notifications).
-    """
-    notifications: list[str] = []
-    active = current
-    for msg in messages:
-        if msg.role != "tool":
-            continue
-        text = msg.text() or ""
-        if text.startswith("SKILL_ACTIVATED:"):
-            name = text.split(":", 1)[1].strip()
-            notifications.append(f"  >> Skill activated : {name}")
-            active = name
-        elif text == "SKILL_DEACTIVATED":
-            notifications.append(f"  >> Skill cleared   : {active or '(none)'}")
-            active = None
-    return active, notifications
-
-
 # ── REPL ───────────────────────────────────────────────────────────────────
 
 def main() -> None:
     thread_id = f"skills-chat-{uuid4().hex[:8]}"
-    active_skill: str | None = None
 
     print_banner(thread_id)
 
     while True:
-        prompt = f"[{active_skill}] You: " if active_skill else "You: "
+        prompt = "You: "
         try:
             user_input = input(prompt).strip()
         except (KeyboardInterrupt, EOFError):
@@ -154,10 +156,15 @@ def main() -> None:
             print(f"\n  [error] {exc}\n")
             continue
 
-        # Update active skill and collect notifications
-        active_skill, notes = extract_active_skill(result["messages"], active_skill)
-        for note in notes:
-            print(note)
+        # Check if any skill was loaded (look for set_skill tool calls)
+        for msg in result["messages"]:
+            if msg.role == "tool":
+                text = msg.text() or ""
+                if text.startswith("## SKILL:"):
+                    # Extract skill name from header
+                    skill_line = text.split("\n")[0]
+                    skill_name = skill_line.replace("## SKILL:", "").strip()
+                    print(f"  >> Skill loaded: {skill_name}")
 
         # Print the last assistant response
         for msg in reversed(result["messages"]):

@@ -16,7 +16,7 @@ from agentflow.skills.loader import (
     load_resource,
     load_skill_content,
 )
-from agentflow.skills.models import SkillConfig, SkillMeta
+from agentflow.skills.models import SkillMeta
 
 
 logger = logging.getLogger("agentflow.skills.registry")
@@ -41,7 +41,22 @@ class SkillsRegistry:
     # -- registration -------------------------------------------------------
 
     def register(self, meta: SkillMeta) -> None:
-        """Register a single :class:`SkillMeta`."""
+        """Register a single :class:`SkillMeta`.
+
+        Duplicate names are allowed only when re-registering the exact same
+        skill file (idempotent registration). Different files using the same
+        skill name raise a ValueError to avoid silent overrides.
+        """
+        existing = self._skills.get(meta.name)
+        if existing is not None:
+            if existing.skill_file == meta.skill_file:
+                logger.debug("Skill '%s' already registered from %s", meta.name, meta.skill_file)
+                return
+            raise ValueError(
+                f"Duplicate skill name '{meta.name}' from {meta.skill_file} "
+                f"(already registered from {existing.skill_file})"
+            )
+
         self._skills[meta.name] = meta
         if meta.skill_file:
             with contextlib.suppress(OSError):
@@ -74,9 +89,9 @@ class SkillsRegistry:
     def load_content(self, name: str, hot_reload: bool = True) -> str:
         """Load the body of a skill's SKILL.md.
 
-        When *hot_reload* is ``True`` and the file hasn't changed on disk
-        since the last read, return empty-string (caller should use cached
-        value).  This avoids re-reading large files on every LLM call.
+        When *hot_reload* is ``True``, file mtime is refreshed before loading
+        content. This supports edit-aware behavior without changing the return
+        contract: this method always returns the current skill content string.
         """
         meta = self._skills.get(name)
         if meta is None:
@@ -114,16 +129,17 @@ class SkillsRegistry:
 
     def build_trigger_table(self, tags: set[str] | None = None) -> str:
         """Generate a markdown trigger table for the LLM system prompt."""
-        skills = self.get_all(tags=tags)
+        skills = sorted(
+            self.get_all(tags=tags),
+            key=lambda s: (-s.priority, s.name),
+        )
         if not skills:
             return ""
 
         lines = [
             "## Available Skills\n",
             "On EVERY user turn, check whether the request matches a skill below.\n"
-            "If it matches a skill — even if a different skill is currently active — "
-            "call `set_skill(skill_name)` FIRST before doing anything else.\n"
-            "Switching skills mid-session is expected and correct.\n",
+            "If it matches a skill, call `set_skill(skill_name)` before finalizing your answer.\n",
             "| Skill | When to use |",
             "|-------|-------------|",
         ]
@@ -131,18 +147,13 @@ class SkillsRegistry:
             desc = meta.description
             if meta.triggers:
                 desc = "; ".join(meta.triggers[:3])
-            lines.append(f"| `{meta.name}` | {desc} |")
+            safe_desc = desc.replace("|", "\\|").replace("\n", " ").strip()
+            lines.append(f"| `{meta.name}` | {safe_desc} |")
 
         return "\n".join(lines)
 
-    def build_set_skill_tool(self, config: SkillConfig | None = None) -> Any:
+    def build_set_skill_tool(self, hot_reload: bool = True) -> Any:
         """Convenience — delegates to :func:`activation.make_set_skill_tool`."""
         from agentflow.skills.activation import make_set_skill_tool
 
-        return make_set_skill_tool(self, config)
-
-    def build_clear_skill_tool(self) -> Any:
-        """Convenience — delegates to :func:`activation.make_clear_skill_tool`."""
-        from agentflow.skills.activation import make_clear_skill_tool
-
-        return make_clear_skill_tool()
+        return make_set_skill_tool(self, hot_reload=hot_reload)

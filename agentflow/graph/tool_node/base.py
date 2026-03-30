@@ -176,6 +176,36 @@ class ToolNode(
         self.remote_tools: list[dict] = []
         self.remote_tool_names: list[str] = []
 
+    def add_tool(self, tool: t.Callable) -> None:
+        """Add a single tool to the ToolNode after initialization.
+
+        This method allows dynamic addition of tools to an existing ToolNode,
+        useful for cases like skills where tools need to be added programmatically.
+
+        Args:
+            tool: A callable function to register as a tool. The function will be
+                registered with its `__name__` as the tool identifier.
+
+        Raises:
+            TypeError: If the provided tool is not callable.
+
+        Example:
+            ```python
+            tool_node = ToolNode([existing_tool])
+
+
+            def new_tool(param: str) -> str:
+                return f"Result: {param}"
+
+
+            tool_node.add_tool(new_tool)
+            ```
+        """
+        if not callable(tool):
+            raise TypeError("ToolNode.add_tool() only accepts callables")
+        self._funcs[tool.__name__] = tool
+        logger.debug(f"Added tool '{tool.__name__}' to ToolNode")
+
     async def _all_tools_async(
         self,
         tags: set[str] | None = None,

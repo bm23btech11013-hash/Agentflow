@@ -29,7 +29,5 @@ class SkillConfig(BaseModel):
     """Configuration for the skills system on an Agent."""
 
     skills_dir: str | None = None
-    max_active: int = 1
-    auto_deactivate: bool = True
     inject_trigger_table: bool = True
     hot_reload: bool = True

@@ -1,8 +1,8 @@
 """Skills Example — simple graph with Gemini 2.5 Flash + dynamic skills.
 
 This example shows how to use the Agentflow Skills system so a single
-agent can switch between specialised modes (code-review, data-analysis,
-writing-assistant) at runtime without restarting or changing the graph.
+agent can load specialised skill modes (code-review, data-analysis,
+writing-assistant) on-demand at runtime.
 
 How it works
 ------------
@@ -11,20 +11,10 @@ How it works
    builds a trigger table that is appended to the system prompt, and
    registers a ``set_skill`` tool the LLM can call.
 3. When the user's message matches a skill's triggers, the LLM calls
-   ``set_skill("<name>")``.  The framework intercepts the tool result and
-   stores the active skill in ``state.execution_meta.internal_data``.
-4. On every subsequent LLM call, the full SKILL.md content is injected as
-   an extra system message — completely outside the conversation context,
-   so it is NEVER trimmed away even when ``trim_context=True``.
-5. ``clear_skill()`` is available to return to general mode.
-
-Skills survive context trimming
---------------------------------
-``trim_context=True`` is safe to use with skills because:
-- The active skill name lives in ``execution_meta.internal_data``, not in
-  ``state.context``.
-- Skill content is re-injected fresh on every LLM call from the
-  ``SkillInjector`` — it never sits in the trimmed message window.
+   ``set_skill("<name>")``.  The tool returns the full SKILL.md content
+   directly, which the LLM uses to respond.
+4. Each turn, the LLM can decide which skill (if any) to load based on
+   the user's request.
 
 Run
 ---
@@ -50,11 +40,38 @@ from agentflow.utils.constants import END
 load_dotenv()
 
 # ---------------------------------------------------------------------------
+# Custom tool — get_weather (in addition to skills)
+# ---------------------------------------------------------------------------
+def get_weather(location: str) -> str:
+    """Get the current weather for a location.
+    
+    Args:
+        location: The city or location to get weather for
+        
+    Returns:
+        A string describing the current weather
+    """
+    # Mock weather data
+    weather_data = {
+        "london": "Cloudy, 15°C",
+        "new york": "Sunny, 22°C",
+        "tokyo": "Rainy, 18°C",
+        "paris": "Partly cloudy, 17°C",
+    }
+    
+    location_lower = location.lower()
+    if location_lower in weather_data:
+        return f"The weather in {location} is: {weather_data[location_lower]}"
+    else:
+        return f"Weather data not available for {location}. Try London, New York, Tokyo, or Paris."
+
+
+# ---------------------------------------------------------------------------
 # Skills directory — three SKILL.md files sit alongside this script
 # ---------------------------------------------------------------------------
 SKILLS_DIR = str(Path(__file__).parent / "skills")
 # ---------------------------------------------------------------------------
-# Agent — Gemini 2.5 Flash with skills + context trimming enabled
+# Agent — Gemini 2.5 Flash with skills + context trimming enabled + custom tools
 # ---------------------------------------------------------------------------
 agent = Agent(
     model="google/gemini-2.5-flash",
@@ -65,29 +82,34 @@ agent = Agent(
                 "You are a smart, multi-skilled assistant.\n"
                 "You have access to specialised skill modes that give you "
                 "deeper expertise in specific domains.\n"
-                "When the user's request clearly matches a skill, activate "
-                "it immediately by calling set_skill() before doing anything else.\n"
-                "When the task is done, call clear_skill() to return to general mode."
+                "When the user's request clearly matches a skill, call set_skill() "
+                "with that skill name to load its instructions, then use them to respond.\n"
+                "You also have access to a get_weather tool for weather queries."
             ),
         }
     ],
+    tools=[get_weather],  # ← Add custom tools here (alongside skills)
     skills=SkillConfig(
         skills_dir=SKILLS_DIR,
         inject_trigger_table=True,   # auto-appends skill trigger table to system prompt
         hot_reload=True,             # re-reads SKILL.md on every call (great for dev)
-        auto_deactivate=True,        # activating a new skill deactivates the old one
     ),
-    # trim_context=True is fully safe with skills — the active skill name is
-    # stored in execution_meta (not context) and content is re-injected each call.
     trim_context=True,
 )
 
 # ---------------------------------------------------------------------------
 # Tool node — use the public get_tool_node() method, not agent._tool_node.
-# When skills are enabled, this ToolNode already contains set_skill +
-# clear_skill — no extra setup required.
+# When skills are enabled, this ToolNode contains both:
+#   1. set_skill (auto-added by skills system)
+#   2. get_weather (our custom tool passed to Agent)
 # ---------------------------------------------------------------------------
 tool_node = agent.get_tool_node()
+
+# Optional: Print available tools to verify both are registered
+print("\n📋 Available tools in ToolNode:")
+for tool_name in tool_node._funcs.keys():
+    print(f"  - {tool_name}")
+print()
 
 # ---------------------------------------------------------------------------
 # Routing
@@ -116,8 +138,6 @@ def should_use_tools(state: AgentState) -> str:
 # Graph
 # ---------------------------------------------------------------------------
 graph = StateGraph(
-    # Keep at most 20 messages in context — skills still work fine because
-    # skill content is injected outside the context window.
     context_manager=MessageContextManager(max_messages=20),
 )
 graph.add_node("MAIN", agent)

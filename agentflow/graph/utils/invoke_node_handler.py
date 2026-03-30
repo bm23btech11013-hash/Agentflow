@@ -182,22 +182,6 @@ class InvokeNodeHandler(BaseLoggingMixin):
 
             # asyncio.gather preserves the order corresponding to the tasks list
             result = await asyncio.gather(*tasks)
-
-            # ── Skill activation marker interception ──────────────────
-            from agentflow.skills.activation import extract_skill_markers
-
-            activated, should_deactivate = extract_skill_markers(result)
-            if activated or should_deactivate:
-                current: list[str] = list(
-                    state.execution_meta.internal_data.get("active_skills", [])
-                )
-                if should_deactivate:
-                    current.clear()
-                for name in activated:
-                    if name not in current:
-                        current.append(name)
-                state.execution_meta.internal_data["active_skills"] = current
-                logger.info("Active skills updated: %s", current)
         else:
             # No tool calls to execute, return available tools
             logger.exception("Node '%s': No tool calls to execute", self.name)

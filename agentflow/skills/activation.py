@@ -1,116 +1,122 @@
-"""Skill activation / deactivation tools and marker extraction.
+"""Skill tools for Agentflow.
 
-Provides factory functions that create the ``set_skill`` and ``clear_skill``
-tools the LLM can call, plus a helper to scan tool-result messages for the
-activation markers.
+Provides a factory function that creates the ``set_skill`` tool the LLM can
+call to load skill content and resources on demand.
 """
 
 from __future__ import annotations
 
 import logging
 from collections.abc import Callable
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 
 if TYPE_CHECKING:
     from agentflow.skills.registry import SkillsRegistry
-    from agentflow.state.message import Message
-
-from agentflow.skills.models import SkillConfig
 
 
 logger = logging.getLogger("agentflow.skills.activation")
 
-_ACTIVATED_PREFIX = "SKILL_ACTIVATED:"
-_DEACTIVATED_MARKER = "SKILL_DEACTIVATED"
-
 
 def make_set_skill_tool(
     registry: SkillsRegistry,
-    config: SkillConfig | None = None,
+    hot_reload: bool = True,
 ) -> Callable:
     """Factory that returns a ``set_skill`` function whose doc-string
     lists the available skills.
 
-    When the LLM calls ``set_skill("triage")``, the function returns
-    ``"SKILL_ACTIVATED:triage"`` — a marker string that the framework
-    intercepts in ``InvokeNodeHandler._call_tools``.
+    The tool can load:
+    - Skill instructions: set_skill("code-review")
+    - Specific resource: set_skill("code-review", "style-guide.md")
     """
 
     available = registry.get_all()
-    names_str = ", ".join(sorted(m.name for m in available))
     skill_list = "\n".join(f"- {m.name}: {m.description}" for m in available)
 
-    def set_skill(skill_name: str) -> str:
-        """Activate a specialized skill protocol.
-
-        Call this tool when the user's request matches a skill domain.
-        After activation, the skill's instructions and tools will be
-        injected automatically.
+    def set_skill(skill_name: str, resource: str | None = None) -> str:  # noqa: PLR0911
+        """Load a skill's instructions or a specific resource.
 
         Args:
-            skill_name: Name of the skill to activate.
+            skill_name: Name of the skill to load.
+            resource: Optional. If provided, loads this specific resource file
+                instead of the skill instructions.
         """
-        if registry.get(skill_name) is not None:
-            logger.info("Skill activated via tool: '%s'", skill_name)
-            return f"{_ACTIVATED_PREFIX}{skill_name}"
+        names_str = ", ".join(registry.names())
+        meta = registry.get(skill_name)
+        if meta is None:
+            logger.warning("Unknown skill requested: %r. Available: %s", skill_name, names_str)
+            return f"ERROR: Unknown skill '{skill_name}'. Available: {names_str}"
 
-        logger.warning("Unknown skill requested: %r. Available: %s", skill_name, names_str)
-        return f"ERROR: Unknown skill '{skill_name}'. Available: {names_str}"
+        # If resource is specified, load that specific resource
+        if resource:
+            if not meta.resources:
+                return f"ERROR: Skill '{skill_name}' has no resources."
+
+            # Prefer exact relative-path matches first.
+            exact_matches = [res_path for res_path in meta.resources if res_path == resource]
+            if exact_matches:
+                matching_resource = exact_matches[0]
+            else:
+                # Support filename-only lookup when uniquely identifiable.
+                basename_matches = [
+                    res_path for res_path in meta.resources if Path(res_path).name == resource
+                ]
+                if len(basename_matches) == 1:
+                    matching_resource = basename_matches[0]
+                elif len(basename_matches) > 1:
+                    options = ", ".join(sorted(basename_matches))
+                    return (
+                        f"ERROR: Resource '{resource}' is ambiguous. "
+                        f"Use an exact path. Matches: {options}"
+                    )
+                else:
+                    matching_resource = None
+
+            if matching_resource is None:
+                available_res = ", ".join(meta.resources)
+                return f"ERROR: Resource '{resource}' not found. Available: {available_res}"
+
+            from agentflow.skills.loader import load_resource
+
+            content = load_resource(meta, matching_resource)
+
+            if content is None:
+                return f"ERROR: Could not load resource '{matching_resource}'."
+
+            logger.info("Resource loaded: '%s' from skill '%s'", matching_resource, skill_name)
+            return f"## Resource: {resource}\n\n{content}"
+
+        # Load the skill content
+        logger.info("Skill loaded via tool: '%s'", skill_name)
+
+        content = registry.load_content(skill_name, hot_reload=hot_reload)
+        if not content:
+            return f"ERROR: Skill '{skill_name}' found but content could not be loaded."
+
+        header = skill_name.upper().replace("-", " ")
+        result = f"## SKILL: {header}\n\n{content}"
+
+        # List available resources (if any)
+        if meta.resources:
+            resource_list = "\n".join(f"  - {r}" for r in meta.resources)
+            result += (
+                f"\n\n---\n### Available Resources\n"
+                f"This skill has reference documents available. "
+                f'Call `set_skill("{skill_name}", "<resource_name>")` to load any you need:\n'
+                f"{resource_list}"
+            )
+
+        return result
 
     # Patch the docstring so the LLM sees available skills
     set_skill.__doc__ = (
-        "Activate a specialized skill protocol.\n\n"
-        "Call this tool when the user's request matches a skill domain.\n"
-        "Call this to activate a skill OR to switch away from an already-active skill "
-        "when the user's request better matches a different one.\n\n"
+        "Load a skill's instructions or a specific resource.\n\n"
+        "Call this tool when the user's request matches a skill domain.\n\n"
         f"Available skills:\n{skill_list}\n\n"
         "Args:\n"
-        "    skill_name: Name of the skill to activate."
+        "    skill_name: Name of the skill to load.\n"
+        "    resource: Optional. If provided, loads this specific resource file "
+        "instead of the skill instructions."
     )
     return set_skill
-
-
-def make_clear_skill_tool() -> Callable:
-    """Factory that returns a ``clear_skill`` tool to deactivate the
-    current skill."""
-
-    def clear_skill() -> str:
-        """Deactivate the currently active skill and return to general mode."""
-        logger.info("Skill deactivated via tool")
-        return _DEACTIVATED_MARKER
-
-    return clear_skill
-
-
-def extract_skill_markers(
-    messages: list[Message],
-) -> tuple[list[str], bool]:
-    """Scan a list of tool-result messages for skill activation/deactivation markers.
-
-    Returns:
-        ``(activated_names, should_deactivate)``
-        where *activated_names* is a list of skill names found in
-        ``SKILL_ACTIVATED:<name>`` markers and *should_deactivate* is ``True``
-        if a ``SKILL_DEACTIVATED`` marker was found.
-    """
-    activated: list[str] = []
-    should_deactivate = False
-
-    for msg in messages:
-        if not hasattr(msg, "content") or msg.content is None:
-            continue
-        for block in msg.content:
-            raw = getattr(block, "output", None) or getattr(block, "text", None)
-            if raw is None:
-                raw = str(block)
-            if not isinstance(raw, str):
-                continue
-            if raw.startswith(_ACTIVATED_PREFIX):
-                name = raw[len(_ACTIVATED_PREFIX) :].strip()
-                if name:
-                    activated.append(name)
-            elif raw == _DEACTIVATED_MARKER:
-                should_deactivate = True
-
-    return activated, should_deactivate

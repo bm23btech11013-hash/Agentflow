@@ -42,8 +42,7 @@ class AgentExecutionMixin:
 
         Use this public method instead of accessing ``agent._tool_node``
         directly when wiring the tool node into the graph. When skills are
-        enabled, the returned ToolNode already contains the ``set_skill`` and
-        ``clear_skill`` tools.
+        enabled, the returned ToolNode already contains the ``set_skill`` tool.
 
         Example::
 
@@ -297,20 +296,14 @@ class AgentExecutionMixin:
 
         state = await self._trim_context(state)
 
-        # Build effective system prompts with skills if configured
+        # Build effective system prompts (with trigger table if skills configured)
         effective_system_prompt = list(self.system_prompt)
-        skill_extra_messages: list[dict[str, Any]] = []
 
         if hasattr(self, "_build_skill_prompts") and callable(self._build_skill_prompts):
-            effective_system_prompt, skill_extra_messages = self._build_skill_prompts(
-                state, self.system_prompt
-            )
-
-        # Combine system prompts and skill messages
-        all_system = effective_system_prompt + skill_extra_messages
+            effective_system_prompt = self._build_skill_prompts(state, self.system_prompt)
 
         messages = convert_messages(
-            system_prompts=all_system,
+            system_prompts=effective_system_prompt,
             state=state,
             extra_messages=self.extra_messages or [],
         )

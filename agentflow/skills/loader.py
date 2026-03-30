@@ -27,7 +27,7 @@ from agentflow.skills.models import SkillMeta
 logger = logging.getLogger("agentflow.skills.loader")
 
 
-def discover_skills(skills_dir: str) -> list[SkillMeta]:
+def discover_skills(skills_dir: str) -> list[SkillMeta]:  # noqa: PLR0912
     """Scan *skills_dir* for subdirectories containing a ``SKILL.md`` with
     valid YAML frontmatter and return a list of :class:`SkillMeta`.
 
@@ -83,6 +83,10 @@ def discover_skills(skills_dir: str) -> list[SkillMeta]:
         triggers = meta_block.get("triggers") or frontmatter.get("triggers", [])
         if isinstance(triggers, str):
             triggers = [triggers]
+        elif isinstance(triggers, list):
+            triggers = [str(t).strip() for t in triggers if str(t).strip()]
+        else:
+            triggers = []
 
         resources: list[str] = []
         for rel_path in meta_block.get("resources") or frontmatter.get("resources", []):
@@ -93,9 +97,24 @@ def discover_skills(skills_dir: str) -> list[SkillMeta]:
                 logger.warning("Resource not found for skill '%s': %s", name, rel_path)
 
         raw_tags = meta_block.get("tags") or frontmatter.get("tags", [])
-        tags = set(raw_tags) if isinstance(raw_tags, list) else set()
+        tags = (
+            {str(t).strip() for t in raw_tags if str(t).strip()}
+            if isinstance(raw_tags, list)
+            else set()
+        )
 
-        priority = int(meta_block.get("priority") or frontmatter.get("priority", 0))
+        raw_priority = meta_block.get("priority")
+        if raw_priority is None:
+            raw_priority = frontmatter.get("priority", 0)
+        try:
+            priority = int(raw_priority)
+        except (TypeError, ValueError):
+            logger.warning(
+                "Invalid priority for skill '%s': %r (defaulting to 0)",
+                name,
+                raw_priority,
+            )
+            priority = 0
 
         results.append(
             SkillMeta(
