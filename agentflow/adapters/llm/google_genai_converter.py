@@ -252,7 +252,7 @@ class GoogleGenAIConverter(BaseConverter):
             return text_part, reasoning_part, content_blocks, tools_calls
 
         content = candidate.content
-        parts = content.parts if content else []
+        parts = (content.parts or []) if content else []
 
         for part in parts:
             # Handle thought parts (reasoning) first

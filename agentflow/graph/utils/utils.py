@@ -191,7 +191,26 @@ async def load_or_create_state[StateT: AgentState](  # noqa: PLR0912, PLR0915
                 logger.debug("Merging %d new messages with existing context", len(new_messages))
                 # Validate message content before adding
                 await validate_message_content(new_messages)
+                pre_merge_len = len(existing_state.context)
                 existing_state.context = add_messages(existing_state.context, new_messages)
+
+                # Fallback: when all input messages were filtered out by ID deduplication
+                # (e.g. frontend sends full history with placeholder id="0") and the last
+                # input message is a user message while the context ends with an assistant
+                # message, forcibly add the last user message so the conversation continues.
+                if len(existing_state.context) == pre_merge_len:
+                    last_input = new_messages[-1]
+                    last_ctx = existing_state.context[-1] if existing_state.context else None
+                    if last_input.role == "user" and (last_ctx is None or last_ctx.role != "user"):
+                        from agentflow.state.message import generate_id
+
+                        new_msg = last_input.model_copy(update={"message_id": generate_id(None)})
+                        existing_state.context = existing_state.context + [new_msg]
+                        logger.info(
+                            "Added last user message with new ID to continue conversation "
+                            "(fallback for duplicate message_id in input)"
+                        )
+
             # Merge partial state fields if provided
             partial_state = input_data.get("state", {})
             if partial_state and isinstance(partial_state, dict):
