@@ -205,7 +205,7 @@ async def load_or_create_state[StateT: AgentState](  # noqa: PLR0912, PLR0915
                         from agentflow.state.message import generate_id
 
                         new_msg = last_input.model_copy(update={"message_id": generate_id(None)})
-                        existing_state.context = existing_state.context + [new_msg]
+                        existing_state.context = [*existing_state.context, new_msg]
                         logger.info(
                             "Added last user message with new ID to continue conversation "
                             "(fallback for duplicate message_id in input)"

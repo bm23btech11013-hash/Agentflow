@@ -71,13 +71,15 @@ class SkillMeta(BaseModel):
         if len(v) > _MAX_TRIGGERS:
             raise ValueError(f"Too many triggers (max {_MAX_TRIGGERS})")
         cleaned: list[str] = []
-        for t in v:
-            t = t.strip()
-            if not t:
+        for trigger in v:
+            cleaned_trigger = trigger.strip()
+            if not cleaned_trigger:
                 continue  # silently drop empty triggers
-            if len(t) > _MAX_TRIGGER_LEN:
-                raise ValueError(f"Trigger exceeds {_MAX_TRIGGER_LEN} characters: '{t[:50]}...'")
-            cleaned.append(t)
+            if len(cleaned_trigger) > _MAX_TRIGGER_LEN:
+                raise ValueError(
+                    f"Trigger exceeds {_MAX_TRIGGER_LEN} characters: '{cleaned_trigger[:50]}...'"
+                )
+            cleaned.append(cleaned_trigger)
         return cleaned
 
     @field_validator("resources")
@@ -85,16 +87,19 @@ class SkillMeta(BaseModel):
     def _validate_resources(cls, v: list[str]) -> list[str]:
         if len(v) > _MAX_RESOURCES:
             raise ValueError(f"Too many resources (max {_MAX_RESOURCES})")
-        for r in v:
-            r = r.strip()
-            if not r:
+        cleaned_resources: list[str] = []
+        for resource in v:
+            cleaned_resource = resource.strip()
+            if not cleaned_resource:
                 raise ValueError("Resource path must not be empty")
             # Path traversal protection
-            if ".." in r or r.startswith("/") or r.startswith("\\"):
+            if ".." in cleaned_resource or cleaned_resource.startswith(("/", "\\")):
                 raise ValueError(
-                    f"Invalid resource path '{r}'. Paths must be relative and cannot contain '..'."
+                    "Invalid resource path "
+                    f"'{cleaned_resource}'. Paths must be relative and cannot contain '..'."
                 )
-        return v
+            cleaned_resources.append(cleaned_resource)
+        return cleaned_resources
 
     @field_validator("tags")
     @classmethod
