@@ -95,19 +95,7 @@ def make_set_skill_tool(
             return f"ERROR: Skill '{skill_name}' found but content could not be loaded."
 
         header = skill_name.upper().replace("-", " ")
-        result = f"## SKILL: {header}\n\n{content}"
-
-        # List available resources (if any)
-        if meta.resources:
-            resource_list = "\n".join(f"  - {r}" for r in meta.resources)
-            result += (
-                f"\n\n---\n### Available Resources\n"
-                f"This skill has reference documents available. "
-                f'Call `set_skill("{skill_name}", "<resource_name>")` to load any you need:\n'
-                f"{resource_list}"
-            )
-
-        return result
+        return f"## SKILL: {header}\n\n{content}"
 
     # Patch the docstring so the LLM sees available skills
     set_skill.__doc__ = (
