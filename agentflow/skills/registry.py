@@ -153,17 +153,24 @@ class SkillsRegistry:
 
         lines = [
             "## Available Skills\n",
-            "On EVERY user turn, check whether the request matches a skill below.\n"
-            "If it matches a skill, call `set_skill(skill_name)` before finalizing your answer.\n",
-            "| Skill | When to use |",
-            "|-------|-------------|",
+            "### How to Use Skills\n",
+            "When the user's request matches a skill:\n",
+            "1. Call `set_skill(skill_name)` to load the skill instructions\n",
+            "2. Read the loaded content — it may reference additional resources\n",
+            "3. If you need a specific resource mentioned in the skill, "
+            "call `set_skill(skill_name, resource_name)`\n",
+            "4. Then provide your answer using the loaded content\n",
+            "### Skills & Resources\n",
         ]
+
         for meta in skills:
-            desc = meta.description
-            if meta.triggers:
-                desc = "; ".join(meta.triggers[:3])
-            safe_desc = desc.replace("|", "\\|").replace("\n", " ").strip()
-            lines.append(f"| `{meta.name}` | {safe_desc} |")
+            # Skill header with triggers
+            max_triggers_display = 4
+            triggers_str = ", ".join(f'"{t}"' for t in meta.triggers[:max_triggers_display])
+            if len(meta.triggers) > max_triggers_display:
+                triggers_str += f" (+{len(meta.triggers) - max_triggers_display} more)"
+            lines.append(f"**`{meta.name}`** — triggers: {triggers_str}")
+            lines.append("")
 
         return "\n".join(lines)
 
